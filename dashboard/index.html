@@ -280,7 +280,7 @@ function bdBucket(days) {
 function classifySrc(s) {
   const n = (s || '').toLowerCase();
   if (['adword','google','sem','ppc'].some(p => n.includes(p))) return 'adwords';
-  if (['facebook','fb','meta','msfb'].some(p => n.includes(p))) return 'msfb';
+  if (['facebook','fb','meta','msfb','whatsapp'].some(p => n.includes(p))) return 'msfb';
   if (['organic'].some(p => n.includes(p))) return 'organic';
   return 'nonms';
 }
