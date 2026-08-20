@@ -2763,6 +2763,15 @@ function AuthGate(){
 
   useEffect(function(){
     var auth=getFbAuth();
+    // Handle redirect result on mount (signInWithRedirect callback)
+    auth.getRedirectResult().catch(function(e){
+      if(e.code==='auth/unauthorized-domain'){
+        setAuthErr('Domain not authorized. Admin must add mihirbhatt1402.github.io to Firebase Console → Authentication → Authorized domains.');
+      } else if(e.code&&e.code!=='auth/no-auth-event'){
+        setAuthErr(e.message);
+      }
+      setAuthLoading(false);
+    });
     var unsubAuth=auth.onAuthStateChanged(function(user){
       cleanups.current.forEach(function(f){try{f();}catch(e){}});
       cleanups.current=[];
@@ -2795,9 +2804,9 @@ function AuthGate(){
     setAuthLoading(true);setAuthErr('');
     var provider=new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
-    getFbAuth().signInWithPopup(provider)
-      .catch(function(e){if(e.code!=='auth/popup-closed-by-user')setAuthErr(e.message);})
-      .then(function(){setAuthLoading(false);},function(){setAuthLoading(false);});
+    // Use redirect flow (not popup) — reliable on GitHub Pages / static hosting
+    getFbAuth().signInWithRedirect(provider)
+      .catch(function(e){setAuthErr(e.message);setAuthLoading(false);});
   }
 
   function handleSignOut(){
