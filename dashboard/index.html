@@ -2913,9 +2913,7 @@ function AuthGate(){
 
   useEffect(function(){
     var auth=getFbAuth();
-    var unsubAuth=null;
     var mounted=true;
-    console.log('[HERO AUTH] page loaded — Firebase project:',FIREBASE_CONFIG.projectId,'authDomain:',FIREBASE_CONFIG.authDomain);
 
     function teardown(){
       cleanups.current.forEach(function(f){try{f();}catch(e){}});
@@ -2924,35 +2922,25 @@ function AuthGate(){
 
     function handleUser(user){
       if(!mounted)return;
-      console.log('[HERO AUTH] handleUser — user:',user?user.email:'null','| handledUid:',handledUid.current);
       if(!user){
         teardown();
         handledUid.current=null;
         if(mounted){setAuthState('unauth');setFbUser(null);setRole(null);setPresence({});}
-        console.log('[HERO AUTH] authState → unauth (no user)');
         return;
       }
-      if(handledUid.current===user.uid){
-        console.log('[HERO AUTH] dedup — same uid already handled, listeners preserved');
-        return;
-      }
+      if(handledUid.current===user.uid){return;}
       teardown();
       handledUid.current=user.uid;
       var email=(user.email||'').toLowerCase().trim();
-      console.log('[HERO AUTH] checking domain for:',email);
       if(!email||!ALLOWED_DOMAINS.some(function(d){return email.endsWith(d);})){
         var domainErr='Access denied: '+email+' is not from an allowed domain (@girnarsoft.com or @girnarcare.com).';
         if(mounted)setAuthErr(domainErr);
-        console.warn('[HERO AUTH] domain rejected:',domainErr);
         handledUid.current=null;
         auth.signOut();
         return;
       }
-      console.log('[HERO AUTH] domain OK — starting role lookup, uid:',user.uid);
       if(mounted){setFbUser(user);setAuthState('pending');}
-      ensureUserDoc(user).then(function(){
-        console.log('[HERO AUTH] ensureUserDoc success');
-      }).catch(function(e){
+      ensureUserDoc(user).catch(function(e){
         console.error('[HERO AUTH] ensureUserDoc failed:',e.code||e.message);
       });
       var presRef=setupPresence(user);
@@ -2961,14 +2949,11 @@ function AuthGate(){
         function(snap){
           if(mounted){
             var r=(snap.data()||{}).role||'pending';
-            console.log('[HERO AUTH] role snapshot — role:',r,'→ authState:',r==='pending'?'pending':'authed');
             setRole(r);setAuthState(r==='pending'?'pending':'authed');
           }
         },
         function(e){
-          console.error('[HERO AUTH] Firestore role watch FAILED:',e.code||e.message);
           if(mounted){
-            console.warn('[HERO AUTH] Firestore unavailable — granting access via domain auth, email:',user.email);
             var fallbackRole=isAdminEmail(user.email)?'admin':'full';
             setRole(fallbackRole);setAuthState('authed');
           }
@@ -2983,56 +2968,26 @@ function AuthGate(){
       }
     }
 
-    function registerListener(){
-      console.log('[HERO AUTH] registering onAuthStateChanged listener');
-      unsubAuth=auth.onAuthStateChanged(function(user){
-        console.log('[HERO AUTH] onAuthStateChanged — user:',user?user.email:'null');
-        handleUser(user);
-      });
-    }
-
-    console.log('[HERO AUTH] calling getRedirectResult()...');
-    auth.getRedirectResult()
-      .then(function(result){
-        if(!mounted)return;
-        var hasUser=!!(result&&result.user);
-        console.log('[HERO AUTH] getRedirectResult resolved — hasUser:',hasUser,hasUser?('email:'+result.user.email):'(no pending redirect)');
-        if(hasUser){handleUser(result.user);}
-        registerListener();
-      })
-      .catch(function(e){
-        if(!mounted)return;
-        var code=e&&e.code||'';
-        console.error('[HERO AUTH] getRedirectResult ERROR — code:',code,'message:',e.message);
-        var msg='';
-        if(code==='auth/unauthorized-domain'){
-          msg='[HERO AUTH ERROR] auth/unauthorized-domain — mihirbhatt1402.github.io is NOT in Firebase authorized domains. Go to Firebase Console → Project hero-ldr-dashboard → Authentication → Settings → Authorized domains → Add domain: mihirbhatt1402.github.io';
-        } else if(code==='auth/operation-not-allowed'){
-          msg='[HERO AUTH ERROR] auth/operation-not-allowed — Google sign-in not enabled in Firebase Console.';
-        } else if(code&&code!=='auth/no-auth-event'){
-          msg='Firebase auth error ('+code+'): '+e.message;
-        }
-        if(msg){console.error('[HERO AUTH]',msg);if(mounted)setAuthErr(msg);}
-        setAuthLoading(false);
-        registerListener();
-      });
+    var unsubAuth=auth.onAuthStateChanged(function(user){handleUser(user);});
 
     return function(){
       mounted=false;
-      if(unsubAuth)unsubAuth();
+      unsubAuth();
       teardown();
     };
   },[]);
 
   function handleLogin(){
     setAuthLoading(true);setAuthErr('');
-    console.log('[HERO AUTH] signInWithRedirect — Firebase project:',FIREBASE_CONFIG.projectId);
     var provider=new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
-    getFbAuth().signInWithRedirect(provider)
+    getFbAuth().signInWithPopup(provider)
       .catch(function(e){
-        console.error('[HERO AUTH] signInWithRedirect error:',e.code,e.message);
-        setAuthErr('Sign-in error ('+e.code+'): '+e.message);
+        var code=e&&e.code||'';
+        var msg='Sign-in error ('+code+'): '+e.message;
+        if(code==='auth/popup-blocked'){msg='Pop-up was blocked by your browser. Please allow pop-ups for this site and try again.';}
+        else if(code==='auth/unauthorized-domain'){msg='This domain is not authorized. Contact the administrator.';}
+        setAuthErr(msg);
         setAuthLoading(false);
       });
   }
