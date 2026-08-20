@@ -2708,33 +2708,35 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
 
 /* ══════════════════════════════════════════════════════════════════════
    FIREBASE — Hero MotoCorp LDR Dashboard
-   Project: re-ldr-dashboard  |  Collection: re_hero_users
+   Project: hero-ldr-dashboard  |  Collection: hero_users
 ══════════════════════════════════════════════════════════════════════ */
 var FIREBASE_CONFIG={
-  apiKey:'AIzaSyBgqQZ-0-rDhxZQl4ktt433YGzw-MdWT3Y',
-  authDomain:'re-ldr-dashboard.firebaseapp.com',
-  databaseURL:'https://re-ldr-dashboard-default-rtdb.firebaseio.com',
-  projectId:'re-ldr-dashboard',
-  storageBucket:'re-ldr-dashboard.firebasestorage.app',
-  messagingSenderId:'327269038709',
-  appId:'1:327269038709:web:037032749de4cae0b2d63c',
+  apiKey:'AIzaSyB-iqU-hJh7JE3la6AdYpYKvLHV5MpI8yA',
+  authDomain:'hero-ldr-dashboard.firebaseapp.com',
+  projectId:'hero-ldr-dashboard',
+  storageBucket:'hero-ldr-dashboard.firebasestorage.app',
+  messagingSenderId:'587923423865',
+  appId:'1:587923423865:web:038e0493ad4f5944d70aa8',
 };
 var ADMIN_EMAILS=['mihir.bhatt@girnarsoft.com','aditya.kumar@girnarsoft.com'];
 var ALLOWED_DOMAINS=['@girnarsoft.com','@girnarcare.com'];
-var USERS_COL='re_hero_users';
-var PRESENCE_PATH='re_hero_presence';
+var USERS_COL='hero_users';
+var PRESENCE_PATH='hero_presence';
 
 var _fbApp=null;
 function getFirebase(){
   if(!_fbApp){
-    try{_fbApp=firebase.initializeApp(FIREBASE_CONFIG,'re-hero');}
-    catch(e){_fbApp=firebase.apps.find(function(a){return a.name==='re-hero';})||firebase.app('re-hero');}
+    try{_fbApp=firebase.initializeApp(FIREBASE_CONFIG,'hero');}
+    catch(e){_fbApp=firebase.apps.find(function(a){return a.name==='hero';})||firebase.app('hero');}
   }
   return _fbApp;
 }
 function getFbAuth(){return firebase.auth(getFirebase());}
 function getFbDb(){return firebase.firestore(getFirebase());}
-function getFbRTDB(){return firebase.database(getFirebase());}
+function getFbRTDB(){
+  try{return firebase.database(getFirebase());}
+  catch(e){console.warn('[HERO AUTH] Realtime Database not configured — presence disabled');return null;}
+}
 
 function isAdminEmail(email){return ADMIN_EMAILS.includes((email||'').toLowerCase());}
 function ensureUserDoc(user){
@@ -2752,7 +2754,9 @@ function ensureUserDoc(user){
   });
 }
 function setupPresence(user){
-  var presRef=getFbRTDB().ref(PRESENCE_PATH+'/'+user.uid);
+  var rtdb=getFbRTDB();
+  if(!rtdb)return null;
+  var presRef=rtdb.ref(PRESENCE_PATH+'/'+user.uid);
   presRef.set({uid:user.uid,email:user.email,name:user.displayName||user.email,photo:user.photoURL||'',ts:firebase.database.ServerValue.TIMESTAMP});
   presRef.onDisconnect().remove();
   return presRef;
@@ -2952,7 +2956,7 @@ function AuthGate(){
         console.error('[HERO AUTH] ensureUserDoc failed:',e.code||e.message);
       });
       var presRef=setupPresence(user);
-      cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
+      if(presRef)cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
       var unsubRole=getFbDb().collection(USERS_COL).doc(user.uid).onSnapshot(
         function(snap){
           if(mounted){
@@ -2971,9 +2975,12 @@ function AuthGate(){
         }
       );
       cleanups.current.push(unsubRole);
-      var presListenRef=getFbRTDB().ref(PRESENCE_PATH);
-      presListenRef.on('value',function(snap){if(mounted)setPresence(snap.val()||{});});
-      cleanups.current.push(function(){presListenRef.off();});
+      var _rtdb=getFbRTDB();
+      if(_rtdb){
+        var presListenRef=_rtdb.ref(PRESENCE_PATH);
+        presListenRef.on('value',function(snap){if(mounted)setPresence(snap.val()||{});});
+        cleanups.current.push(function(){presListenRef.off();});
+      }
     }
 
     function registerListener(){
@@ -2999,7 +3006,7 @@ function AuthGate(){
         console.error('[HERO AUTH] getRedirectResult ERROR — code:',code,'message:',e.message);
         var msg='';
         if(code==='auth/unauthorized-domain'){
-          msg='[HERO AUTH ERROR] auth/unauthorized-domain — mihirbhatt1402.github.io is NOT in Firebase authorized domains. Go to Firebase Console → Project re-ldr-dashboard → Authentication → Settings → Authorized domains → Add domain: mihirbhatt1402.github.io';
+          msg='[HERO AUTH ERROR] auth/unauthorized-domain — mihirbhatt1402.github.io is NOT in Firebase authorized domains. Go to Firebase Console → Project hero-ldr-dashboard → Authentication → Settings → Authorized domains → Add domain: mihirbhatt1402.github.io';
         } else if(code==='auth/operation-not-allowed'){
           msg='[HERO AUTH ERROR] auth/operation-not-allowed — Google sign-in not enabled in Firebase Console.';
         } else if(code&&code!=='auth/no-auth-event'){
