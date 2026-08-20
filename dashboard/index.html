@@ -89,7 +89,7 @@ select:focus{border-color:var(--hero);box-shadow:0 0 0 3px rgba(22,163,74,.15)}
 'use strict';
 
 /* ═══════════════════════════════════════════════════════════════════
-   GOOGLE SHEETS SYNC CONFIG — Royal Enfield LDR Dashboard
+   GOOGLE SHEETS SYNC CONFIG — Hero MotoCorp LDR Dashboard
    ═══════════════════════════════════════════════════════════════════ */
 const HERO_SHEETS_CONFIG = Object.freeze({
   LEADS_URL:  "https://docs.google.com/spreadsheets/d/1MdlYzXsJ1rAZ1PfVDNXE7n8IGaHQuoW25QHh3tq6XRc/edit?gid=1691488845#gid=1691488845",
@@ -370,7 +370,7 @@ function canonicalState(s){
   if(!t||STATE_GARBAGE.has(t)) return '';
   return STATE_FIX[t]||t;
 }
-const MODEL_FIX={'Royan Enfield Bullet 350':'Royal Enfield Bullet 350'};
+const MODEL_FIX={}; /* Hero: no known model-name typo corrections needed */
 function canonicalModel(s){
   const t=(s||'').trim();
   return MODEL_FIX[t]||t;
@@ -2425,7 +2425,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     ce('div',{style:{background:'#9A3412',padding:'0 24px',position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 16px rgba(45,106,79,.35)'}},
       ce('div',{style:{maxWidth:1600,margin:'0 auto',display:'flex',alignItems:'center',gap:16}},
         ce('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'10px 0',flexShrink:0}},
-          ce('div',{style:{width:34,height:34,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#EA580C',boxShadow:'0 2px 8px rgba(0,0,0,.15)'}},'RE'),
+          ce('div',{style:{width:34,height:34,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#EA580C',boxShadow:'0 2px 8px rgba(0,0,0,.15)'}},'H'),
           ce('div',null,
             ce('div',{style:{fontSize:13,fontWeight:800,color:'#fff',letterSpacing:'-.02em'}},'Hero · LDR'),
             ce('div',{style:{fontSize:9,color:'#FED7AA',letterSpacing:'.07em',fontWeight:600}},'LEAD DISPOSITION DASHBOARD v1.0 · BikeDekho'),
@@ -2551,8 +2551,8 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   FIREBASE — Royal Enfield LDR Dashboard
-   Project: re-ldr-dashboard  |  Collections: re_ldr_users  |  RTDB: re_ldr_presence
+   FIREBASE — Hero MotoCorp LDR Dashboard
+   Project: re-ldr-dashboard  |  Collections: re_hero_users  |  RTDB: re_hero_presence
 ══════════════════════════════════════════════════════════════════════ */
 var FIREBASE_CONFIG={
   apiKey:'AIzaSyBgqQZ-0-rDhxZQl4ktt433YGzw-MdWT3Y',
@@ -2615,7 +2615,7 @@ function LoginPage({onLogin,loading,error}){
   return ce('div',{className:'auth-screen'},
     ce('div',{className:'auth-card'},
       ce('div',{style:{display:'inline-flex',alignItems:'center',gap:12,background:'#9A3412',padding:'12px 24px',borderRadius:12,marginBottom:20,boxShadow:'0 4px 20px rgba(194,65,12,.35)'}},
-        ce('div',{style:{width:36,height:36,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:900,color:'#EA580C'}},'RE'),
+        ce('div',{style:{width:36,height:36,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:900,color:'#EA580C'}},'H'),
         ce('div',{style:{textAlign:'left'}},
           ce('div',{style:{fontSize:14,fontWeight:800,color:'#fff',letterSpacing:'-.02em'}},'Hero MotoCorp'),
           ce('div',{style:{fontSize:9,color:'#FED7AA',letterSpacing:'.06em',fontWeight:600}},'LEAD DISPOSITION DASHBOARD')
