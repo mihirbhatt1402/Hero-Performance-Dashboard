@@ -2873,37 +2873,47 @@ function AuthGate(){
 
   useEffect(function(){
     var auth=getFbAuth();
-    auth.getRedirectResult().catch(function(e){
-      if(e.code==='auth/unauthorized-domain'){
-        setAuthErr('Domain not authorized. Admin must add this domain to Firebase Console \u2192 Authentication \u2192 Authorized domains.');
-      } else if(e.code&&e.code!=='auth/no-auth-event'){
-        setAuthErr(e.message);
-      }
-      setAuthLoading(false);
-    });
-    var unsubAuth=auth.onAuthStateChanged(function(user){
-      cleanups.current.forEach(function(f){try{f();}catch(e){}});
-      cleanups.current=[];
-      if(!user){setAuthState('unauth');setFbUser(null);setRole(null);setPresence({});return;}
-      if(!user.email||!ALLOWED_DOMAINS.some(function(d){return user.email.endsWith(d);})){
-        setAuthErr('Only @girnarsoft.com or @girnarcare.com accounts are allowed.');
-        auth.signOut();return;
-      }
-      setFbUser(user);
-      setAuthState('pending');
-      ensureUserDoc(user).catch(function(e){console.error('[Auth] ensureUserDoc:',e.code||e.message);});
-      var presRef=setupPresence(user);
-      cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
-      var unsubRole=getFbDb().collection(USERS_COL).doc(user.uid).onSnapshot(
-        function(snap){var r=(snap.data()||{}).role||'pending';setRole(r);setAuthState(r==='pending'?'pending':'authed');},
-        function(e){console.error('[Auth] role watch:',e.code||e.message);}
-      );
-      cleanups.current.push(unsubRole);
-      var presListenRef=getFbRTDB().ref(PRESENCE_PATH);
-      presListenRef.on('value',function(snap){setPresence(snap.val()||{});});
-      cleanups.current.push(function(){presListenRef.off();});
-    });
-    return function(){unsubAuth();cleanups.current.forEach(function(f){try{f();}catch(e){}});};
+    var unsubAuth=null;
+
+    // CRITICAL: register onAuthStateChanged only AFTER getRedirectResult() settles.
+    // Without this, onAuthStateChanged fires with user=null while Firebase is still
+    // processing the Google redirect \u2014 sending the returning user back to the login page.
+    // By chaining in .finally(), auth.currentUser is stable before we check it.
+    auth.getRedirectResult()
+      .catch(function(e){
+        if(e.code==='auth/unauthorized-domain'){
+          setAuthErr('Domain not authorized. Admin must add this domain to Firebase Console \u2192 Authentication \u2192 Authorized domains.');
+        } else if(e.code&&e.code!=='auth/no-auth-event'){
+          setAuthErr(e.message);
+        }
+        setAuthLoading(false);
+      })
+      .finally(function(){
+        unsubAuth=auth.onAuthStateChanged(function(user){
+          cleanups.current.forEach(function(f){try{f();}catch(e){}});
+          cleanups.current=[];
+          if(!user){setAuthState('unauth');setFbUser(null);setRole(null);setPresence({});return;}
+          var email=(user.email||'').toLowerCase().trim();
+          if(!email||!ALLOWED_DOMAINS.some(function(d){return email.endsWith(d);})){
+            setAuthErr('Only @girnarsoft.com or @girnarcare.com accounts are allowed.');
+            auth.signOut();return;
+          }
+          setFbUser(user);
+          setAuthState('pending');
+          ensureUserDoc(user).catch(function(e){console.error('[Auth] ensureUserDoc:',e.code||e.message);});
+          var presRef=setupPresence(user);
+          cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
+          var unsubRole=getFbDb().collection(USERS_COL).doc(user.uid).onSnapshot(
+            function(snap){var r=(snap.data()||{}).role||'pending';setRole(r);setAuthState(r==='pending'?'pending':'authed');},
+            function(e){console.error('[Auth] role watch:',e.code||e.message);}
+          );
+          cleanups.current.push(unsubRole);
+          var presListenRef=getFbRTDB().ref(PRESENCE_PATH);
+          presListenRef.on('value',function(snap){setPresence(snap.val()||{});});
+          cleanups.current.push(function(){presListenRef.off();});
+        });
+      });
+    return function(){if(unsubAuth)unsubAuth();cleanups.current.forEach(function(f){try{f();}catch(e){}});};
   },[]);
 
   function handleLogin(){
