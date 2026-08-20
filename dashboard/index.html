@@ -2734,7 +2734,7 @@ function AdminPanel({onClose}){
                 ce('span',{style:{padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:roleBg[u.role]||roleBg.pending,color:roleColor[u.role]||roleColor.pending}},u.role||'pending')
               ),
               ce('td',{style:{padding:'7px 10px'}},
-                u.email===ADMIN_EMAIL
+                isAdminEmail(u.email)
                   ?ce('span',{style:{fontSize:11,color:'#9ca3af'}},'—')
                   :saving===u.id
                     ?ce('span',{style:{fontSize:11,color:'#9ca3af'}},'Saving…')
