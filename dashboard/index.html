@@ -2563,7 +2563,7 @@ var FIREBASE_CONFIG={
   messagingSenderId:'327269038709',
   appId:'1:327269038709:web:037032749de4cae0b2d63c',
 };
-var ADMIN_EMAIL='mihir.bhatt@girnarsoft.com';
+var ADMIN_EMAILS=['mihir.bhatt@girnarsoft.com','aditya.kumar@girnarsoft.com'];
 var ALLOWED_DOMAINS=['@girnarsoft.com','@girnarcare.com'];
 var USERS_COL='re_hero_users';
 var PRESENCE_PATH='re_hero_presence';
@@ -2580,20 +2580,26 @@ function getFbAuth(){return firebase.auth(getFirebase());}
 function getFbDb(){return firebase.firestore(getFirebase());}
 function getFbRTDB(){return firebase.database(getFirebase());}
 
+function isAdminEmail(email){
+  return ADMIN_EMAILS.includes((email||'').toLowerCase());
+}
 function ensureUserDoc(user){
   var ref=getFbDb().collection(USERS_COL).doc(user.uid);
+  var isAdmin=isAdminEmail(user.email);
   return ref.get().then(function(snap){
     if(!snap.exists){
       return ref.set({
         email:user.email,
         displayName:user.displayName||user.email,
         photoURL:user.photoURL||'',
-        role:user.email===ADMIN_EMAIL?'admin':'pending',
+        role:isAdmin?'admin':'pending',
         createdAt:firebase.firestore.FieldValue.serverTimestamp(),
       });
-    } else if(snap.data().email!==user.email){
-      return ref.update({email:user.email,displayName:user.displayName||user.email,photoURL:user.photoURL||''});
     }
+    var updates={};
+    if(snap.data().email!==user.email) Object.assign(updates,{email:user.email,displayName:user.displayName||user.email,photoURL:user.photoURL||''});
+    if(isAdmin&&snap.data().role!=='admin') updates.role='admin';
+    if(Object.keys(updates).length) return ref.update(updates);
   });
 }
 
@@ -2781,7 +2787,8 @@ function AuthGate(){
         auth.signOut();return;
       }
       setFbUser(user);
-      ensureUserDoc(user).catch(function(e){console.error('[Auth] ensureUserDoc:',e.message);});
+      setAuthState('pending'); // prevent infinite loading if Firestore is slow/unavailable
+      ensureUserDoc(user).catch(function(e){console.error('[Auth] ensureUserDoc:',e.code||e.message);});
       var presRef=setupPresence(user);
       cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
       var unsubRole=getFbDb().collection(USERS_COL).doc(user.uid).onSnapshot(
@@ -2790,7 +2797,10 @@ function AuthGate(){
           setRole(r);
           setAuthState(r==='pending'?'pending':'authed');
         },
-        function(e){console.error('[Auth] role watch:',e.message);}
+        function(e){
+          console.error('[Auth] role watch:',e.code||e.message);
+          // authState already set to 'pending'; user sees PendingPage rather than hanging
+        }
       );
       cleanups.current.push(unsubRole);
       var presListenRef=getFbRTDB().ref(PRESENCE_PATH);
