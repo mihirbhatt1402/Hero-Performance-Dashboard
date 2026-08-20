@@ -453,7 +453,11 @@ function HeroDiagnostics({d,visible,onToggle}){
   );
 }
 
-/* buildPayload: Hero flat rows → TVS compact matrix format */
+/* buildPayload: Hero flat rows → TVS compact matrix format
+   On Create matrices (no prefix) = all leads bucketed by lead_month
+   On Update matrices (bm_ prefix) = all leads bucketed by booking_month
+     (booked leads → booking_month; unbooked → lead_month)
+*/
 function buildPayload(joinedRows){
   const now=Date.now();
   const lmArr=[],lmMap=Object.create(null);
@@ -465,6 +469,7 @@ function buildPayload(joinedRows){
   function idx(arr,map,val){if(val in map)return map[val];const i=arr.length;arr.push(val);map[val]=i;return i;}
   for(const r of joinedRows){
     idx(lmArr,lmMap,r.lead_month||'Unknown');
+    if(r.booking_month)idx(lmArr,lmMap,r.booking_month); // ensure booking months are in lm map
     idx(srcArr,srcMap,r.source||'Unknown');
     idx(mdlArr,mdlMap,r.model||'Unknown');
     idx(stArr,stMap,r.state||'Unknown');
@@ -480,10 +485,15 @@ function buildPayload(joinedRows){
     return d>=0&&d<=2;
   }
 
+  // On Create accumulators (lead_month dimension, all leads + unique subset)
   const monthlyA=new Map(),smA=new Map(),mmA=new Map(),stmA=new Map(),ltmA=new Map();
   const mxstA=new Map(),cmA=new Map(),csmA=new Map(),cxmA=new Map(),univA=new Map();
   const u_mA=new Map(),u_smA=new Map(),u_mmA=new Map(),u_stmA=new Map(),u_ltmA=new Map();
   const u_mxstA=new Map(),u_cmA=new Map(),u_csmA=new Map(),u_cxmA=new Map(),u_univA=new Map();
+
+  // On Update accumulators (booking_month for booked; lead_month for unbooked)
+  const bm_mA=new Map(),bm_smA=new Map(),bm_mmA=new Map(),bm_stmA=new Map(),bm_ltmA=new Map();
+  const bm_mxstA=new Map(),bm_cmA=new Map(),bm_csmA=new Map(),bm_cxmA=new Map(),bm_univA=new Map();
 
   function a2(m,k,L,R){const e=m.get(k);if(e){e[0]+=L;e[1]+=R;}else m.set(k,[L,R]);}
   function a1(m,k,L){const e=m.get(k);if(e){e[0]+=L;}else m.set(k,[L]);}
@@ -496,6 +506,8 @@ function buildPayload(joinedRows){
     const lti=ltMap[r.lt||'Unknown'];
     const ci=cityMap[r.city||'Unknown'];
     const L=1,R=isRetailed(r)?1:0;
+
+    // On Create (lead_month dimension)
     a2(monthlyA,li+'',L,R);
     a2(smA,si+'|'+li,L,R);
     a2(mmA,mi+'|'+si+'|'+li,L,R);
@@ -518,6 +530,19 @@ function buildPayload(joinedRows){
       a2(u_cxmA,ci+'|'+mi+'|'+li,L,R);
       a2(u_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+li,L,R);
     }
+
+    // On Update (booking_month for booked leads, lead_month for unbooked)
+    const bmi=(r.isBooked&&r.booking_month)?lmMap[r.booking_month]:li;
+    a2(bm_mA,bmi+'',L,R);
+    a2(bm_smA,si+'|'+bmi,L,R);
+    a2(bm_mmA,mi+'|'+si+'|'+bmi,L,R);
+    a2(bm_stmA,sti+'|'+si+'|'+bmi,L,R);
+    a2(bm_ltmA,lti+'|'+si+'|'+bmi,L,R);
+    a1(bm_mxstA,mi+'|'+sti+'|'+bmi,L);
+    a2(bm_cmA,ci+'|'+bmi,L,R);
+    a2(bm_csmA,ci+'|'+si+'|'+bmi,L,R);
+    a2(bm_cxmA,ci+'|'+mi+'|'+bmi,L,R);
+    a2(bm_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+bmi,L,R);
   }
   const f1=m=>[...m.entries()].map(([k,v])=>[+k,v[0],v[1]]);
   const f2=m=>[...m.entries()].map(([k,v])=>{const[a,b]=k.split('|');return[+a,+b,v[0],v[1]];});
@@ -527,10 +552,14 @@ function buildPayload(joinedRows){
   return{
     t:now,
     maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state},
+    // On Create matrices (lead_month dimension)
     monthly:f1(monthlyA),sm:f2(smA),mm:f3(mmA),stm:f3(stmA),ltm:f3(ltmA),
     mxst:f3L(mxstA),cm:f2(cmA),csm:f3(csmA),cxm:f3(cxmA),univ:f5(univA),
     u_monthly:f1(u_mA),u_sm:f2(u_smA),u_mm:f3(u_mmA),u_stm:f3(u_stmA),u_ltm:f3(u_ltmA),
     u_mxst:f3L(u_mxstA),u_cm:f2(u_cmA),u_csm:f3(u_csmA),u_cxm:f3(u_cxmA),u_univ:f5(u_univA),
+    // On Update matrices (booking_month dimension)
+    bm_monthly:f1(bm_mA),bm_sm:f2(bm_smA),bm_mm:f3(bm_mmA),bm_stm:f3(bm_stmA),bm_ltm:f3(bm_ltmA),
+    bm_mxst:f3L(bm_mxstA),bm_cm:f2(bm_cmA),bm_csm:f3(bm_csmA),bm_cxm:f3(bm_cxmA),bm_univ:f5(bm_univA),
     disp:[],u_disp:[],zm:[],u_zm:[],bdm:[],u_bdm:[],
     mlt:[],stlt:[],cdm:[],cdsm:[],stcm:[],
     u_mlt:[],u_stlt:[],u_cdm:[],u_cdsm:[],u_stcm:[],
@@ -2565,13 +2594,16 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
 
   const effectiveData=useMemo(()=>{
     if(!data)return null;
-    if(leadsMode==='create'||!data.u_monthly)return data;
+    // On Create: lead_month dimension (default)
+    if(leadsMode==='create')return data;
+    // On Update: booking_month dimension (booked leads → booking_month; unbooked → lead_month)
+    if(!data.bm_monthly)return data;
     return{
       ...data,
-      monthly:data.u_monthly,sm:data.u_sm,ltm:data.u_ltm,mm:data.u_mm,stm:data.u_stm,
-      mxst:data.u_mxst,cm:data.u_cm||[],csm:data.u_csm||[],cxm:data.u_cxm||[],univ:data.u_univ,
-      mlt:data.u_mlt||[],stlt:data.u_stlt||[],cdm:data.u_cdm||[],cdsm:data.u_cdsm||[],stcm:data.u_stcm||[],
-      disp:data.u_disp||[],
+      monthly:data.bm_monthly,sm:data.bm_sm,ltm:data.bm_ltm,mm:data.bm_mm,stm:data.bm_stm,
+      mxst:data.bm_mxst,cm:data.bm_cm||[],csm:data.bm_csm||[],cxm:data.bm_cxm||[],univ:data.bm_univ,
+      mlt:data.mlt||[],stlt:data.stlt||[],cdm:data.cdm||[],cdsm:data.cdsm||[],stcm:data.stcm||[],
+      disp:data.disp||[],
     };
   },[data,leadsMode]);
 
@@ -2635,11 +2667,13 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
           syncing?ce('span',{style:{display:'inline-block',animation:'spin .8s linear infinite',fontSize:11}},'\u27f3'):'\ud83d\udd04',
           syncing?'Syncing\u2026':'Sync Sheets'
         ),
-        ce('div',{style:{display:'flex',borderRadius:20,overflow:'hidden',border:'1px solid rgba(255,255,255,.4)',fontSize:10,fontWeight:700,flexShrink:0}},
+        ce('div',{style:{display:'flex',alignItems:'center',background:'#F1F5F9',borderRadius:20,padding:'2px',border:'1px solid #E2E8F0',gap:2,flexShrink:0}},
           ce('button',{onClick:()=>setLeadsMode('create'),
-            style:{padding:'4px 10px',background:leadsMode==='create'?'#fff':'transparent',color:leadsMode==='create'?'#7C2D12':'rgba(255,255,255,.85)',border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,whiteSpace:'nowrap'}},'All'),
+            style:{padding:'4px 12px',fontSize:10,fontWeight:700,fontFamily:'inherit',border:'none',borderRadius:18,cursor:'pointer',transition:'all 120ms',
+              background:leadsMode==='create'?'#9A3412':'transparent',color:leadsMode==='create'?'#fff':'#64748B',whiteSpace:'nowrap'}},'On Create'),
           ce('button',{onClick:()=>setLeadsMode('update'),
-            style:{padding:'4px 10px',background:leadsMode==='update'?'#fff':'transparent',color:leadsMode==='update'?'#7C2D12':'rgba(255,255,255,.85)',border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,borderLeft:'1px solid rgba(255,255,255,.3)',whiteSpace:'nowrap'}},'Unique')
+            style:{padding:'4px 12px',fontSize:10,fontWeight:700,fontFamily:'inherit',border:'none',borderRadius:18,cursor:'pointer',transition:'all 120ms',
+              background:leadsMode==='update'?'#9A3412':'transparent',color:leadsMode==='update'?'#fff':'#64748B',whiteSpace:'nowrap'}},'On Update'),
         ),
         ce('div',{style:{borderLeft:'1px solid rgba(255,255,255,.25)',paddingLeft:10,marginLeft:4,flexShrink:0}},
           ce(PresenceStrip,{presence,fbUser,role,onSignOut,onAdminOpen})
@@ -2870,50 +2904,86 @@ function AuthGate(){
   var[authLoading,setAuthLoading]=useState(false);
   var[showAdmin,setShowAdmin]=useState(false);
   var cleanups=React.useRef([]);
+  var handledUid=React.useRef(null); // dedup: track last handled uid
 
   useEffect(function(){
     var auth=getFbAuth();
     var unsubAuth=null;
+    var mounted=true;
 
-    // CRITICAL: register onAuthStateChanged only AFTER getRedirectResult() settles.
-    // Without this, onAuthStateChanged fires with user=null while Firebase is still
-    // processing the Google redirect \u2014 sending the returning user back to the login page.
-    // By chaining in .finally(), auth.currentUser is stable before we check it.
+    function teardown(){
+      cleanups.current.forEach(function(f){try{f();}catch(e){}});
+      cleanups.current=[];
+    }
+
+    function handleUser(user){
+      if(!mounted)return;
+      teardown();
+      if(!user){
+        handledUid.current=null;
+        if(mounted){setAuthState('unauth');setFbUser(null);setRole(null);setPresence({});}
+        return;
+      }
+      // Deduplicate: same user already wired up (e.g. onAuthStateChanged fires after redirect .then())
+      if(handledUid.current===user.uid)return;
+      handledUid.current=user.uid;
+      var email=(user.email||'').toLowerCase().trim();
+      if(!email||!ALLOWED_DOMAINS.some(function(d){return email.endsWith(d);})){
+        if(mounted)setAuthErr('Only @girnarsoft.com or @girnarcare.com accounts are allowed.');
+        handledUid.current=null;
+        auth.signOut();
+        return;
+      }
+      if(mounted){setFbUser(user);setAuthState('pending');}
+      ensureUserDoc(user).catch(function(e){console.error('[Auth] ensureUserDoc:',e.code||e.message);});
+      var presRef=setupPresence(user);
+      cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
+      var unsubRole=getFbDb().collection(USERS_COL).doc(user.uid).onSnapshot(
+        function(snap){if(mounted){var r=(snap.data()||{}).role||'pending';setRole(r);setAuthState(r==='pending'?'pending':'authed');}},
+        function(e){console.error('[Auth] role watch:',e.code||e.message);}
+      );
+      cleanups.current.push(unsubRole);
+      var presListenRef=getFbRTDB().ref(PRESENCE_PATH);
+      presListenRef.on('value',function(snap){if(mounted)setPresence(snap.val()||{});});
+      cleanups.current.push(function(){presListenRef.off();});
+    }
+
+    function registerListener(){
+      // Register ongoing auth state listener
+      unsubAuth=auth.onAuthStateChanged(handleUser);
+    }
+
+    // CRITICAL: process getRedirectResult() FIRST.
+    // Redirect sign-in: user returns from Google \u2192 Firebase sets currentUser during
+    // getRedirectResult(). We handle the user immediately from .then() and then register
+    // the ongoing listener. handledUid prevents double-setup if onAuthStateChanged also fires.
     auth.getRedirectResult()
+      .then(function(result){
+        if(!mounted)return;
+        if(result&&result.user){
+          // User just completed Google redirect sign-in \u2014 handle immediately
+          handleUser(result.user);
+        }
+        registerListener();
+      })
       .catch(function(e){
-        if(e.code==='auth/unauthorized-domain'){
-          setAuthErr('Domain not authorized. Admin must add this domain to Firebase Console \u2192 Authentication \u2192 Authorized domains.');
-        } else if(e.code&&e.code!=='auth/no-auth-event'){
-          setAuthErr(e.message);
+        if(!mounted)return;
+        var code=e&&e.code||'';
+        if(code==='auth/unauthorized-domain'){
+          setAuthErr('Domain not authorized. An admin must add mihirbhatt1402.github.io to Firebase Console \u2192 Authentication \u2192 Authorized domains.');
+        } else if(code&&code!=='auth/no-auth-event'){
+          setAuthErr(e.message||String(e));
         }
         setAuthLoading(false);
-      })
-      .finally(function(){
-        unsubAuth=auth.onAuthStateChanged(function(user){
-          cleanups.current.forEach(function(f){try{f();}catch(e){}});
-          cleanups.current=[];
-          if(!user){setAuthState('unauth');setFbUser(null);setRole(null);setPresence({});return;}
-          var email=(user.email||'').toLowerCase().trim();
-          if(!email||!ALLOWED_DOMAINS.some(function(d){return email.endsWith(d);})){
-            setAuthErr('Only @girnarsoft.com or @girnarcare.com accounts are allowed.');
-            auth.signOut();return;
-          }
-          setFbUser(user);
-          setAuthState('pending');
-          ensureUserDoc(user).catch(function(e){console.error('[Auth] ensureUserDoc:',e.code||e.message);});
-          var presRef=setupPresence(user);
-          cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
-          var unsubRole=getFbDb().collection(USERS_COL).doc(user.uid).onSnapshot(
-            function(snap){var r=(snap.data()||{}).role||'pending';setRole(r);setAuthState(r==='pending'?'pending':'authed');},
-            function(e){console.error('[Auth] role watch:',e.code||e.message);}
-          );
-          cleanups.current.push(unsubRole);
-          var presListenRef=getFbRTDB().ref(PRESENCE_PATH);
-          presListenRef.on('value',function(snap){setPresence(snap.val()||{});});
-          cleanups.current.push(function(){presListenRef.off();});
-        });
+        // Even on error, register listener (handles persisted sessions)
+        registerListener();
       });
-    return function(){if(unsubAuth)unsubAuth();cleanups.current.forEach(function(f){try{f();}catch(e){}});};
+
+    return function(){
+      mounted=false;
+      if(unsubAuth)unsubAuth();
+      teardown();
+    };
   },[]);
 
   function handleLogin(){
