@@ -368,7 +368,7 @@ function parseHeroLeadRows(raw){
   const rows=raw.map(r=>{
     const opty_id=get(r,['opty_id','opty id','lead id','leadid','lead_id','opportunity id','opportunity_id']);
     const lt=get(r,['lt','lead type','leadtype','lead_type']);
-    const source=get(r,['source','lead source','leadsource']);
+    const source=get(r,['medium','source','lead source','leadsource']);
     const model=get(r,['model','vehicle model','vehiclemodel','bike model']);
     const city=get(r,['city','lead city']);
     const state=get(r,['state','lead state']);
@@ -1277,7 +1277,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
           const aoa=[['Source','Leads','Retails','Contrib%','L2R%']];
           for (const s of srcBreak) aoa.push([s.src,s.l,s.r,+(s.l/totals.l*100).toFixed(2),+s.l2r.toFixed(2)]);
           aoa.push(['∑ Total',totals.l,totals.r,'100.0%',+totals.l2r.toFixed(2)]);
-          exportXlsx({'Source Summary':aoa},'TVS_Overview_Source');
+          exportXlsx({'Source Summary':aoa},'Hero_Overview_Source');
         }})
       ),
       ce('div', { className:'scroll-x' },
@@ -1316,7 +1316,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
           for (const mdl of heatData.top10) {
             aoa.push([mdl, ...heatData.top15.map(st => heatData.cell.get(mdl+'\x00'+st) || 0)]);
           }
-          exportXlsx({'Model×State':aoa}, 'TVS_Model_State_Heatmap');
+          exportXlsx({'Model×State':aoa}, 'Hero_Model_State_Heatmap');
         }})
       ),
       ce('div', { style:{fontSize:11,color:'#94A3B8',marginBottom:10} }, 'Cell shows lead count. Darker = higher volume. Month / Model / State filters apply.'),
@@ -2365,7 +2365,7 @@ const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months,
       rows.push(row);
     }
     rows.push(['∑ Grand Total',summaryAgg.grand.l,summaryAgg.grand.r,100,+summaryAgg.grand.l2r.toFixed(1),...allSrcs.flatMap(s=>{const v=summaryAgg.grandSrc[s]||EMPTY;return[v.l,v.r,+v.l2r.toFixed(1)];})]);
-    exportXlsx({'City × Source':rows},'TVS_CitySource_All');
+    exportXlsx({'City × Source':rows},'Hero_CitySource_All');
   }, [summaryAgg, allSrcs]);
 
   if (!summaryAgg) return ce('div',{style:{textAlign:'center',padding:50,color:'#94A3B8',fontSize:14}},
@@ -2421,7 +2421,7 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
     const gtRow=['∑ Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];
     for (const ck of colKeys) { let tL=0,tR=0; for(const da of Object.values(rowAggs)){const ca=da.colAggs[ck]||{l:0,r:0};tL+=ca.l;tR+=ca.r;} const tL2r=tL>0?tR/tL*100:0; gtRow.push(tL,tR,+tL2r.toFixed(1)); }
     rows.push(gtRow);
-    exportXlsx({[label]:rows},'TVS_StateModel_'+(label==='Summary'?'All':label.replace("'","")));
+    exportXlsx({[label]:rows},'Hero_StateModel_'+(label==='Summary'?'All':label.replace("'","")));
   }, []);
 
   return ce('div', { className:'fade-up' },
@@ -2489,7 +2489,7 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
     const gtRow=['∑ Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];
     for (const ck of colKeys) { let tL=0,tR=0; for(const da of Object.values(rowAggs)){const ca=da.colAggs[ck]||{l:0,r:0};tL+=ca.l;tR+=ca.r;} const tL2r=tL>0?tR/tL*100:0; gtRow.push(tL,tR,+tL2r.toFixed(1)); }
     rows.push(gtRow);
-    exportXlsx({'City × Model':rows},'TVS_CityModel_All');
+    exportXlsx({'City × Model':rows},'Hero_CityModel_All');
   }, [summaryAgg]);
 
   if (cxm.length===0) return ce('div',{style:{textAlign:'center',padding:50,color:'#94A3B8',fontSize:14}},
