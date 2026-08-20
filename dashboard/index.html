@@ -2918,14 +2918,16 @@ function AuthGate(){
 
     function handleUser(user){
       if(!mounted)return;
-      teardown();
       if(!user){
+        teardown();
         handledUid.current=null;
         if(mounted){setAuthState('unauth');setFbUser(null);setRole(null);setPresence({});}
         return;
       }
       // Deduplicate: same user already wired up (e.g. onAuthStateChanged fires after redirect .then())
+      // teardown() MUST come after this check — calling it before would destroy active listeners
       if(handledUid.current===user.uid)return;
+      teardown();
       handledUid.current=user.uid;
       var email=(user.email||'').toLowerCase().trim();
       if(!email||!ALLOWED_DOMAINS.some(function(d){return email.endsWith(d);})){
