@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Hero MotoCorp Lead Disposition Dashboard</title>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<title>Hero Lead Disposition Dashboard v2.0</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -20,7 +21,7 @@
   --red-50:#FFF7ED;--red-100:#FFEDD5;--red-200:#FED7AA;
   --navy:#7C2D12;--blue:#9A3412;--blue-m:#C2410C;
   --blue-50:#FFF7ED;--blue-100:#FFEDD5;--blue-200:#FED7AA;
-  --gold:#F5A623;--gold-light:#FEF3C7;
+  --gold:#D97706;--gold-light:#FEF3C7;
   --teal:#0D9488;--green:#16A34A;--purple:#7C3AED;
   --paid-clr:#7C3AED;--paid-light:#EDE9FE;
   --org-clr:#059669;--org-light:#D1FAE5;
@@ -42,28 +43,28 @@ body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;color:#0f172a;m
 
 /* ── Tab nav ── */
 .tab-pill{padding:10px 22px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;color:#64748B;transition:all var(--dur-fast);font-family:inherit;white-space:nowrap}
-.tab-pill.active{color:#C2410C;border-bottom-color:#EA580C}
+.tab-pill.active{color:var(--red-d);border-bottom-color:var(--red)}
 .tab-pill:hover:not(.active){color:#0f172a;background:var(--red-50)}
 
 /* ── Tables ── */
 table{width:100%;border-collapse:collapse;font-size:11.5px}
-th{padding:9px 12px;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#7C2D12;background:#FFF7ED;text-align:center;border:1px solid #FED7AA;white-space:nowrap;position:sticky;top:0;z-index:2}
+th{padding:9px 12px;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,#7C2D12 0%,#9A3412 100%);text-align:center;border:1px solid rgba(255,255,255,.15);white-space:nowrap;position:sticky;top:0;z-index:2}
 th.left{text-align:left}
-th.sub{background:#FFEDD5;font-size:8.5px;color:#92400E;position:sticky;top:33px;z-index:1;font-weight:600;letter-spacing:.06em;border:1px solid #FDBA74}
+th.sub{background:linear-gradient(90deg,#9A3412,#EA580C);font-size:8.5px;color:#FED7AA;position:sticky;top:33px;z-index:1;font-weight:600;letter-spacing:.06em;border:1px solid rgba(255,255,255,.15)}
 th.grp-toggle{cursor:pointer;user-select:none}
 th.grp-toggle:hover{filter:brightness(.94)}
 td{padding:7px 12px;border:1px solid #E2E8F0;font-size:11.5px;text-align:center;font-family:'DM Mono',monospace;background:#fff;vertical-align:middle}
 td.label{text-align:left;font-family:'Inter',system-ui,sans-serif;font-weight:600;font-size:12px;color:#0f172a;background:#fff;position:sticky;left:0;z-index:1;border-right:2px solid #E2E8F0;white-space:nowrap}
 td.sub-label{text-align:left;font-family:'Inter',system-ui,sans-serif;font-weight:500;font-size:11px;color:#475569;background:#FAFAFA;position:sticky;left:0;z-index:1;border-right:2px solid #E2E8F0;padding-left:28px;white-space:nowrap}
-tr:hover td{background:#FFF0F2}
-tr:hover td.label{background:#FFF0F2}
-tr:hover td.sub-label{background:#FFF0F2}
-tr.total-row td{background:#F5F5F5;color:#1A1A2E;font-weight:700;border-color:#CFD8DC}
-tr.total-row td.label{background:#ECEFF1;color:#7C2D12;font-family:'Inter',system-ui,sans-serif}
-tr.section-row td{background:#E3F2FD;font-weight:700;color:#0D47A1;border-top:2px solid #90CAF9;cursor:pointer}
-tr.section-row:hover td{background:#BBDEFB}
+tr:hover td{background:#FFF7ED}
+tr:hover td.label{background:#FFF7ED}
+tr:hover td.sub-label{background:#FFF7ED}
+tr.total-row td{background:linear-gradient(90deg,#7C2D12,#9A3412);color:#F0FDF4;font-weight:700;border-color:rgba(255,255,255,.15)}
+tr.total-row td.label{background:linear-gradient(90deg,#7C2D12,#9A3412);color:#FED7AA;font-family:'Inter',system-ui,sans-serif}
+tr.section-row td{background:#FFF7ED;font-weight:700;color:#C2410C;border-top:2px solid #FED7AA;cursor:pointer}
+tr.section-row:hover td{background:#FFEDD5}
 tr.sub-row td{background:#FAFAFA}
-tr.sub-row:hover td{background:#FFF0F2}
+tr.sub-row:hover td{background:#FFF7ED}
 tr.city-row td{background:#F0FDF4}
 tr.city-row:hover td{background:#DCFCE7}
 tr.dealer-row td{background:#FAFAFA;border-top:none}
@@ -117,7 +118,7 @@ tr.dealer-row:hover td{background:#FEF3C7}
 .auth-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#7C2D12 0%,#EA580C 100%);z-index:1000}
 .auth-card{background:#fff;border-radius:20px;padding:40px 44px;max-width:440px;width:90%;box-shadow:0 24px 60px rgba(0,0,0,.25)}
 .auth-logo{display:flex;align-items:center;gap:12px;margin-bottom:28px}
-.auth-logo-icon{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#C2410C,#EA580C);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;font-family:'DM Mono',monospace;letter-spacing:-.04em;flex-shrink:0}
+.auth-logo-icon{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#9A3412,#EA580C);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;font-family:'DM Mono',monospace;letter-spacing:-.04em;flex-shrink:0}
 .auth-title{font-size:22px;font-weight:800;color:#0f172a;margin-bottom:4px;letter-spacing:-.03em}
 .auth-subtitle{font-size:12px;color:#64748B;margin-bottom:24px;line-height:1.5}
 .auth-label{display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
@@ -151,12 +152,26 @@ tr.dealer-row:hover td{background:#FEF3C7}
 .no-pending{text-align:center;padding:32px;color:#94A3B8;font-size:13px}
 /* ── User avatar chip ── */
 .user-chip{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 6px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:20px;cursor:default}
-.user-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#C2410C,#EA580C);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0}
+.user-avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#9A3412,#EA580C);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0}
 .user-name{font-size:11px;font-weight:600;color:#0f172a;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .user-role-badge{font-size:9px;font-weight:700;padding:1px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.05em}
 .role-full{background:#DBEAFE;color:#1D4ED8}
 .role-viewer{background:#FEF3C7;color:#92400E}
 .role-admin{background:#EDE9FE;color:#6D28D9}
+
+/* ── Hero Firebase Auth / Presence ── */
+.auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#FFF7ED 0%,#FFFBF5 100%);padding:24px}
+.auth-screen .auth-card{background:#fff;border-radius:20px;padding:44px 40px;max-width:400px;width:100%;text-align:center;box-shadow:0 8px 40px rgba(234,88,12,.15);border:1px solid #FFEDD5}
+.auth-screen .auth-btn{display:inline-flex;align-items:center;gap:10px;padding:12px 28px;border-radius:12px;border:1px solid #E2E8F0;background:#fff;font-size:14px;font-weight:600;cursor:pointer;color:#374151;font-family:inherit;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:all .15s}
+.auth-screen .auth-btn:hover{box-shadow:0 4px 14px rgba(0,0,0,.14);transform:translateY(-1px)}
+.auth-error{margin-top:14px;padding:9px 14px;background:#FFF1F2;border:1px solid #FECDD3;border-radius:10px;font-size:12px;color:#BE123C;font-weight:500}
+.presence-strip{display:flex;align-items:center;gap:6px;padding:4px 0}
+.avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;cursor:default;position:relative;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.avatar:hover .avatar-tip{display:block}
+.avatar-tip{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1E293B;color:#fff;font-size:10px;padding:4px 9px;border-radius:7px;white-space:nowrap;z-index:200;pointer-events:none}
+.admin-panel-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.admin-card{background:#fff;border-radius:16px;padding:28px 32px;max-width:680px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2);max-height:80vh;overflow-y:auto}
+.viewer-badge{background:#DBEAFE;color:#1D4ED8;font-size:9px;font-weight:700;padding:2px 9px;border-radius:20px;letter-spacing:.06em;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -165,320 +180,68 @@ tr.dealer-row:hover td{background:#FEF3C7}
 'use strict';
 
 /* ════════════════════════════════════════════════════════════════════
-   CONFIG
+   GOOGLE SHEETS SYNC CONFIG — Hero MotoCorp LDR Dashboard
    ════════════════════════════════════════════════════════════════════ */
-/* ════════════════════════════════════════════════════════════════════
-   HERO FIREBASE CONFIG
-   Project: re-ldr-dashboard  |  Collections: re_hero_users  |  RTDB: re_hero_presence
-   ════════════════════════════════════════════════════════════════════ */
-var FIREBASE_CONFIG={
-  apiKey:'AIzaSyBgqQZ-0-rDhxZQl4ktt433YGzw-MdWT3Y',
-  authDomain:'re-ldr-dashboard.firebaseapp.com',
-  databaseURL:'https://re-ldr-dashboard-default-rtdb.firebaseio.com',
-  projectId:'re-ldr-dashboard',
-  storageBucket:'re-ldr-dashboard.firebasestorage.app',
-  messagingSenderId:'327269038709',
-  appId:'1:327269038709:web:037032749de4cae0b2d63c',
-};
-var ADMIN_EMAILS=['mihir.bhatt@girnarsoft.com','aditya.kumar@girnarsoft.com'];
-var ALLOWED_DOMAINS=['@girnarsoft.com','@girnarcare.com'];
-var USERS_COL='re_hero_users';
-var PRESENCE_PATH='re_hero_presence';
+const HERO_SHEETS_CONFIG = Object.freeze({
+  LEADS_URL:  "https://docs.google.com/spreadsheets/d/1MdlYzXsJ1rAZ1PfVDNXE7n8IGaHQuoW25QHh3tq6XRc/edit?gid=1691488845#gid=1691488845",
+  RETAIL_URL: "https://docs.google.com/spreadsheets/d/1ZWBlzxX-g2R5iCcrsGUWrqSvxIHcchFHtajDDPcFJgE/edit?gid=0#gid=0",
+  AUTO_SYNC_ON_LOAD: true,
+});
 
-var _fbApp=null;
-function getFirebase(){
-  if(!_fbApp){
-    try{_fbApp=firebase.initializeApp(FIREBASE_CONFIG,'re-hero');}
-    catch(e){_fbApp=firebase.apps.find(function(a){return a.name==='re-hero';})||firebase.app('re-hero');}
+function sheetUrlToCsvUrl(url){
+  const u=(url||'').trim();
+  if(!u) throw new Error('Sheet URL is empty.');
+  const idM=u.match(/\/spreadsheets\/d\/([a-zA-Z0-9_\-]+)/);
+  if(!idM) throw new Error('Not a valid Google Sheets URL.');
+  const id=idM[1];
+  const gidM=u.match(/[#&?]gid=(\d+)/);
+  const gid=gidM?gidM[1]:'0';
+  return 'https://docs.google.com/spreadsheets/d/'+id+'/gviz/tq?tqx=out:csv&gid='+gid;
+}
+
+async function fetchSheetCsv(url){
+  const csvUrl=sheetUrlToCsvUrl(url);
+  let res;
+  try{ res=await fetch(csvUrl,{cache:'no-store'}); }
+  catch(e){ throw new Error('Network error ('+e.message+')'); }
+  if(!res.ok){
+    if(res.status===401||res.status===403) throw new Error('Access denied — share sheet as Anyone → Viewer');
+    throw new Error('HTTP '+res.status);
   }
-  return _fbApp;
-}
-function getFbAuth(){return firebase.auth(getFirebase());}
-function getFbDb(){return firebase.firestore(getFirebase());}
-function getFbRTDB(){return firebase.database(getFirebase());}
-
-function isAdminEmail(email){
-  return ADMIN_EMAILS.includes((email||'').toLowerCase());
-}
-function ensureUserDoc(user){
-  var ref=getFbDb().collection(USERS_COL).doc(user.uid);
-  var isAdmin=isAdminEmail(user.email);
-  return ref.get().then(function(snap){
-    if(!snap.exists){
-      return ref.set({
-        email:user.email,
-        displayName:user.displayName||user.email,
-        photoURL:user.photoURL||'',
-        role:isAdmin?'admin':'pending',
-        createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-    var updates={};
-    if(snap.data().email!==user.email) Object.assign(updates,{email:user.email,displayName:user.displayName||user.email,photoURL:user.photoURL||''});
-    if(isAdmin&&snap.data().role!=='admin') updates.role='admin';
-    if(Object.keys(updates).length) return ref.update(updates);
-  });
-}
-function setupPresence(user){
-  var presRef=getFbRTDB().ref(PRESENCE_PATH+'/'+user.uid);
-  presRef.set({uid:user.uid,email:user.email,name:user.displayName||user.email,photo:user.photoURL||'',ts:firebase.database.ServerValue.TIMESTAMP});
-  presRef.onDisconnect().remove();
-  return presRef;
+  const text=await res.text();
+  if(!text||text.trim().length<5) throw new Error('Sheet returned no data.');
+  if(text.trim().startsWith('<')) throw new Error('Sheet returned HTML — share as Anyone → Viewer.');
+  return text;
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   HERO GOOGLE SHEETS DATA CONFIG
-   ════════════════════════════════════════════════════════════════════ */
-const HERO_LEADS_GID = '1691488845';
-const HERO_LEADS_SID = '1MdlYzXsJ1rAZ1PfVDNXE7n8IGaHQuoW25QHh3tq6XRc';
-const HERO_RETAIL_GID = '0';
-const HERO_RETAIL_SID = '1ZWBlzxX-g2R5iCcrsGUWrqSvxIHcchFHtajDDPcFJgE';
-const HERO_CACHE_KEY = 'hero_ldr_v1_cache';
-
-function heroSheetUrl(sid, gid) {
-  return 'https://docs.google.com/spreadsheets/d/' + sid + '/gviz/tq?tqx=out:csv&gid=' + gid;
-}
-
-async function fetchCsv(url) {
-  const resp = await fetch(url, { cache: 'no-store' });
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' fetching sheet');
-  return resp.text();
-}
-
-function parseCsv(text) {
-  const rows = [];
-  const lines = text.split(/\r?\n/);
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    const row = [];
-    let cur = '', inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') {
-        if (inQ && line[i+1] === '"') { cur += '"'; i++; }
-        else inQ = !inQ;
-      } else if (c === ',' && !inQ) {
-        row.push(cur.trim()); cur = '';
-      } else cur += c;
-    }
-    row.push(cur.trim());
-    rows.push(row);
+function parseCsvToRows(csvText){
+  let text=csvText;
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+  const rows=[];
+  let row=[],field='',inQuotes=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQuotes){
+      if(c==='"'){if(text[i+1]==='"'){field+='"';i++;}else inQuotes=false;}
+      else field+=c;
+    } else if(c==='"'){ inQuotes=true; }
+    else if(c===','){ row.push(field); field=''; }
+    else if(c==='\r'){}
+    else if(c==='\n'){ row.push(field); field=''; rows.push(row); row=[]; }
+    else field+=c;
   }
-  return rows;
-}
-
-const HERO_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function normalizeHeroMonth(s) {
-  if (!s || s === '-') return '';
-  s = String(s).trim();
-  if (/^[A-Za-z]{3}'\d{4}$/.test(s)) return s[0].toUpperCase()+s[1].toLowerCase()+s[2].toLowerCase()+"'"+s.slice(4);
-  const m1 = s.match(/^([A-Za-z]{3,})\s+(\d{4})$/);
-  if (m1) { const mi = HERO_MONTHS.findIndex(n => n.toLowerCase() === m1[1].toLowerCase().slice(0,3)); if (mi >= 0) return HERO_MONTHS[mi]+"'"+m1[2]; }
-  const m2 = s.match(/^(\d{4})-(\d{2})(?:-\d{2})?/);
-  if (m2) return HERO_MONTHS[parseInt(m2[2])-1]+"'"+m2[1];
-  const m3 = s.match(/^(\d{1,2})[\/-](\d{4})$/);
-  if (m3) return HERO_MONTHS[parseInt(m3[1])-1]+"'"+m3[2];
-  const m4 = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
-  if (m4) return HERO_MONTHS[parseInt(m4[2])-1]+"'"+m4[3];
-  return s;
-}
-
-function parseHeroLeads(rows) {
-  if (!rows.length) return [];
-  const hdr = rows[0].map(h => h.toLowerCase().replace(/[\s_]/g,''));
-  const fi = name => { const keys = Array.isArray(name) ? name : [name]; for (const k of keys) { const i = hdr.indexOf(k); if (i >= 0) return i; } return -1; };
-  const IDX = {
-    opty:    fi(['opty_id','optyid','lead_id','leadid']),
-    lnum:    fi(['lead_number','leadnumber','leadnumber']),
-    lmonth:  fi(['lead_month','leadmonth','createdmonth','month']),
-    src:     fi(['medium','source','leadsource','lead_source']),
-    subsrc:  fi(['subsource','sub_source','campaign']),
-    lt:      fi(['leadtype','lead_type','type']),
-    model:   fi(['model','modelname','vehiclemodel']),
-    state:   fi(['state','statename']),
-    city:    fi(['city','cityname']),
-    status:  fi(['status','leadstatus','disposition']),
-    unique:  fi(['isunique','is_unique','unique']),
-  };
-  const out = [];
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    const opty = (IDX.opty >= 0 ? r[IDX.opty] : '').trim();
-    if (!opty) continue;
-    out.push({
-      opty_id:    opty,
-      lead_month: normalizeHeroMonth(IDX.lmonth >= 0 ? r[IDX.lmonth] : ''),
-      source:     (IDX.src   >= 0 ? r[IDX.src]   : '').trim() || 'Unknown',
-      sub_source: (IDX.subsrc>= 0 ? r[IDX.subsrc]: '').trim(),
-      lead_type:  (IDX.lt    >= 0 ? r[IDX.lt]    : '').trim() || 'Unknown',
-      model:      (IDX.model >= 0 ? r[IDX.model] : '').trim() || 'Unknown',
-      state:      (IDX.state >= 0 ? r[IDX.state] : '').trim() || 'Unknown',
-      city:       (IDX.city  >= 0 ? r[IDX.city]  : '').trim() || 'Unknown',
-      is_unique:  IDX.unique >= 0 ? String(r[IDX.unique]).toLowerCase() !== 'false' : true,
-      retail_month: '',
-      is_retailed: false,
-    });
+  if(field.length||row.length){ row.push(field); rows.push(row); }
+  if(!rows.length) return[];
+  const headers=rows[0];
+  const out=[];
+  for(let r=1;r<rows.length;r++){
+    const rv=rows[r];
+    if(rv.length===1&&rv[0]==='') continue;
+    const obj={};
+    for(let c=0;c<headers.length;c++) obj[headers[c]]=rv[c]!==undefined?rv[c]:'';
+    out.push(obj);
   }
   return out;
-}
-
-function parseHeroRetail(rows) {
-  if (!rows.length) return new Map();
-  const hdr = rows[0].map(h => h.toLowerCase().replace(/[\s_]/g,''));
-  const pidx = hdr.findIndex(h => h === 'process' || h === 'processname');
-  const sidx = hdr.findIndex(h => h === 'sourceleadid' || h === 'source_lead_id' || h === 'sourcelead_id');
-  const midx = hdr.findIndex(h => h === 'performancemonth' || h === 'performance_month' || h === 'retailmonth');
-  const m = new Map();
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (pidx >= 0 && String(r[pidx]||'').trim().toLowerCase() !== 'hero') continue;
-    const sid = String(r[sidx]||'').trim();
-    if (!sid) continue;
-    const mon = normalizeHeroMonth(String(r[midx]||'').trim());
-    if (!m.has(sid)) m.set(sid, []);
-    m.get(sid).push(mon);
-  }
-  return m;
-}
-
-function buildHeroPayload(leads, retailMap) {
-  // ── Index maps ───────────────────────────────────────────────────────────
-  const srcArr=[], mdlArr=[], stArr=[], ltArr=[], lmArr=[], cityArr=[];
-  const srcIdx={}, mdlIdx={}, stIdx={}, ltIdx={}, lmIdx={}, cityIdx={};
-  function ensureIdx(arr, idx, val) {
-    if (!(val in idx)) { idx[val] = arr.length; arr.push(val); }
-    return idx[val];
-  }
-
-  // ── Join leads with retail ────────────────────────────────────────────────
-  const joined = leads.map(row => {
-    const retail = retailMap.get(row.opty_id);
-    if (retail && retail.length) {
-      return { ...row, retail_month: retail[retail.length-1], is_retailed: true };
-    }
-    return row;
-  });
-
-  // ── Build index maps from joined data ─────────────────────────────────────
-  for (const row of joined) {
-    ensureIdx(srcArr, srcIdx, row.source || 'Unknown');
-    ensureIdx(mdlArr, mdlIdx, row.model  || 'Unknown');
-    ensureIdx(stArr,  stIdx,  row.state  || 'Unknown');
-    ensureIdx(ltArr,  ltIdx,  row.lead_type || 'Unknown');
-    ensureIdx(cityArr,cityIdx,row.city   || 'Unknown');
-    if (row.lead_month) ensureIdx(lmArr, lmIdx, row.lead_month);
-  }
-
-  // city_state map
-  const cityStateArr = new Array(cityArr.length).fill(-1);
-  for (const row of joined) {
-    const ci = cityIdx[row.city || 'Unknown'];
-    if (cityStateArr[ci] < 0) cityStateArr[ci] = stIdx[row.state || 'Unknown'];
-  }
-
-  const maps = { src: srcArr, mdl: mdlArr, st: stArr, lt: ltArr, lm: lmArr, city: cityArr, city_state: cityStateArr };
-
-  // ── Generic matrix builder ────────────────────────────────────────────────
-  function buildMat(keyFn, onlyRetailed=false, uniqueOnly=false) {
-    const acc = new Map();
-    for (const row of joined) {
-      if (uniqueOnly && !row.is_unique) continue;
-      if (!row.lead_month) continue;
-      const key = keyFn(row);
-      if (key === null) continue;
-      const ks = key.join('|');
-      if (!acc.has(ks)) acc.set(ks, { key, l: 0, r: 0 });
-      const e = acc.get(ks);
-      e.l += 1;
-      if (row.is_retailed) e.r += 1;
-    }
-    return [...acc.values()].map(e => [...e.key, e.l, e.r]);
-  }
-
-  function buildMatL(keyFn, uniqueOnly=false) {
-    // Leads only, no retail col
-    const acc = new Map();
-    for (const row of joined) {
-      if (uniqueOnly && !row.is_unique) continue;
-      if (!row.lead_month) continue;
-      const key = keyFn(row);
-      if (key === null) continue;
-      const ks = key.join('|');
-      if (!acc.has(ks)) acc.set(ks, { key, l: 0 });
-      acc.get(ks).l += 1;
-    }
-    return [...acc.values()].map(e => [...e.key, e.l]);
-  }
-
-  const r = (u=false) => ({
-    monthly: buildMat(row => [lmIdx[row.lead_month]], false, u),
-    sm:      buildMat(row => [srcIdx[row.source], lmIdx[row.lead_month]], false, u),
-    mm:      buildMat(row => [mdlIdx[row.model], srcIdx[row.source], lmIdx[row.lead_month]], false, u),
-    stm:     buildMat(row => [stIdx[row.state],  srcIdx[row.source], lmIdx[row.lead_month]], false, u),
-    ltm:     buildMat(row => [ltIdx[row.lead_type], srcIdx[row.source], lmIdx[row.lead_month]], false, u),
-    mxst:    buildMatL(row => [mdlIdx[row.model], stIdx[row.state], lmIdx[row.lead_month]], u),
-    mlt:     buildMat(row => [mdlIdx[row.model], ltIdx[row.lead_type], lmIdx[row.lead_month]], false, u),
-    stlt:    buildMat(row => [stIdx[row.state],  ltIdx[row.lead_type], lmIdx[row.lead_month]], false, u),
-    cm:      buildMat(row => [cityIdx[row.city], lmIdx[row.lead_month]], false, u),
-    csm:     buildMat(row => [cityIdx[row.city], srcIdx[row.source], lmIdx[row.lead_month]], false, u),
-    cxm:     buildMat(row => [cityIdx[row.city], mdlIdx[row.model], lmIdx[row.lead_month]], false, u),
-    stcm:    buildMat(row => [stIdx[row.state], cityIdx[row.city], lmIdx[row.lead_month]], false, u),
-    univ:    buildMat(row => [mdlIdx[row.model], srcIdx[row.source], stIdx[row.state], ltIdx[row.lead_type], lmIdx[row.lead_month]], false, u),
-    cdm: [], cdsm: [], stdm: [], mxdl: [], ltdl: [], bdm: [], zm: [],
-  });
-
-  const base = r(false);
-  const uniq = r(true);
-
-  // ── Retail Dispersion ─────────────────────────────────────────────────────
-  // Row: [enquired_model_idx, purchased_model_idx, lead_month_idx, count]
-  const dispAcc = new Map();
-  for (const row of joined) {
-    if (!row.is_retailed || !row.lead_month) continue;
-    const mi = mdlIdx[row.model];
-    const lmi = lmIdx[row.lead_month];
-    const k = mi + '|' + mi + '|' + lmi;
-    dispAcc.set(k, (dispAcc.get(k) || 0) + 1);
-  }
-  const disp = [...dispAcc.entries()].map(([k, cnt]) => {
-    const [ei, pi, lmi] = k.split('|').map(Number);
-    return [ei, pi, lmi, cnt];
-  });
-
-  return {
-    maps,
-    t: Date.now(),
-    rt_cols: 0,
-    disp,
-    // base (all leads)
-    monthly: base.monthly, sm: base.sm, mm: base.mm, stm: base.stm, ltm: base.ltm,
-    mxst: base.mxst, mlt: base.mlt, stlt: base.stlt,
-    cm: base.cm, csm: base.csm, cxm: base.cxm, stcm: base.stcm,
-    univ: base.univ,
-    cdm: [], cdsm: [], stdm: [], mxdl: [], ltdl: [], bdm: [], zm: [],
-    // unique-lead versions
-    u_monthly: uniq.monthly, u_sm: uniq.sm, u_mm: uniq.mm, u_stm: uniq.stm, u_ltm: uniq.ltm,
-    u_mxst: uniq.mxst, u_mlt: uniq.mlt, u_stlt: uniq.stlt,
-    u_cm: uniq.cm, u_csm: uniq.csm, u_cxm: uniq.cxm, u_stcm: uniq.stcm,
-    u_univ: uniq.univ,
-    u_cdm: [], u_cdsm: [], u_stdm: [], u_mxdl: [], u_ltdl: [], u_bdm: [], u_zm: [],
-  };
-}
-
-async function fetchData() {
-  const [leadsCsv, retailCsv] = await Promise.all([
-    fetchCsv(heroSheetUrl(HERO_LEADS_SID, HERO_LEADS_GID)),
-    fetchCsv(heroSheetUrl(HERO_RETAIL_SID, HERO_RETAIL_GID)),
-  ]);
-  const leadsRows  = parseCsv(leadsCsv);
-  const retailRows = parseCsv(retailCsv);
-  const leads      = parseHeroLeads(leadsRows);
-  const retailMap  = parseHeroRetail(retailRows);
-  if (!leads.length) throw new Error('No lead rows found. Check sheet access and column headers.');
-  const payload = buildHeroPayload(leads, retailMap);
-  try { localStorage.setItem(HERO_CACHE_KEY + '_t', payload.t); } catch(e) {}
-  return payload;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -553,94 +316,245 @@ const ce = React.createElement;
 const { useState, useEffect, useMemo, useRef, useCallback, useTransition } = React;
 
 /* ════════════════════════════════════════════════════════════════════
-   DATA FETCHING
+   HERO DATA PARSING — Leads + Retail (Google Sheets) + buildPayload
    ════════════════════════════════════════════════════════════════════ */
-/* fetchData() defined in config section above */
+const MONTH_NAMES=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-/* ════════════════════════════════════════════════════════════════════
-   CITY NORMALIZATION
-   Runs once on payload load. Merges case variants (DELHI→Delhi) and
-   known aliases (New Delhi→Delhi) so every city-based tab, filter,
-   and aggregation uses a single canonical city name.
-   ════════════════════════════════════════════════════════════════════ */
-const CITY_ALIAS = {
-  'New Delhi':          'Delhi',
-  'Bengaluru':          'Bangalore',
-  'Prayagraj':          'Allahabad',
-  'Thiruvananthapuram': 'Trivandrum',
-};
+const STATE_GARBAGE=new Set(['#N/A','\\0','\0','N/A','NA']);
+const STATE_FIX={'Jammu & Kashmir':'Jammu and Kashmir','Orissa':'Odisha'};
+function canonicalState(s){const t=(s||'').trim();if(!t||STATE_GARBAGE.has(t))return'';return STATE_FIX[t]||t;}
+const MODEL_FIX={};
+function canonicalModel(s){const t=(s||'').trim();return MODEL_FIX[t]||t;}
 
-// Title-case: mirrors Python's str.title() — capitalise any letter that is NOT
-// preceded by another letter. Handles spaces, hyphens, parentheses, apostrophes.
-// e.g. "PORT-BLAIR" → "Port-Blair", "AMBEDKAR NAGAR" → "Ambedkar Nagar".
-function cityTitleCase(s) {
-  return s.toLowerCase().replace(/(?<![a-z])([a-z])/g, (_, c) => c.toUpperCase());
+function heroMonthOrder(m){
+  if(!m||m==='-'||m==='')return 0;
+  const match=m.match(/([A-Za-z]+)'(\d+)/);
+  if(!match)return 0;
+  const mi=MONTH_NAMES.indexOf(match[1]);
+  return parseInt(match[2])*12+mi;
 }
 
-function canonicalCity(raw) {
-  const t = cityTitleCase(raw.trim().replace(/\s+/g, ' '));
-  return CITY_ALIAS[t] ?? t;
+function normalizeHeroMonth(s){
+  if(!s||s==='-')return'';
+  s=String(s).trim();
+  if(/^[A-Za-z]{3}'\d{4}$/.test(s))return s[0].toUpperCase()+s[1].toLowerCase()+s[2].toLowerCase()+"'"+s.slice(4);
+  const m1=s.match(/^([A-Za-z]{3,})\s+(\d{4})$/);
+  if(m1){const mi=MONTH_NAMES.findIndex(n=>n.toLowerCase()===m1[1].toLowerCase().slice(0,3));if(mi>=0)return MONTH_NAMES[mi]+"'"+m1[2];}
+  const m2=s.match(/^(\d{4})-(\d{2})(?:-\d{2})?/);
+  if(m2)return MONTH_NAMES[parseInt(m2[2])-1]+"'"+m2[1];
+  const m3=s.match(/^(\d{1,2})[\/\-](\d{4})$/);
+  if(m3)return MONTH_NAMES[parseInt(m3[1])-1]+"'"+m3[2];
+  const m4=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m4)return MONTH_NAMES[parseInt(m4[2])-1]+"'"+m4[3];
+  return s;
 }
 
-function normalizeCities(data) {
-  const { maps } = data;
-  if (!maps || !maps.city || maps.city.length === 0) return;
-
-  // Map each old city index to a canonical city index in the new deduped array.
-  const newCityArr = [];
-  const newCityMap = Object.create(null);    // canonical name → new index
-  const remap = new Int32Array(maps.city.length);  // old_idx → new_idx
-  for (let i = 0; i < maps.city.length; i++) {
-    const c = canonicalCity(maps.city[i]);
-    if (!(c in newCityMap)) { newCityMap[c] = newCityArr.length; newCityArr.push(c); }
-    remap[i] = newCityMap[c];
-  }
-
-  // Rebuild city_state with canonical indexes.
-  const newCityState = new Array(newCityArr.length).fill(null);
-  if (maps.city_state) {
-    for (let i = 0; i < maps.city.length; i++) {
-      const ni = remap[i];
-      if (newCityState[ni] == null) newCityState[ni] = maps.city_state[i];
+function parseHeroLeadRows(raw){
+  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,uniqueIds:0,dupIds:0}};
+  const keyMap={};
+  Object.keys(raw[0]).forEach(rk=>{keyMap[rk.toLowerCase().replace(/\s+/g,' ').trim()]=rk;});
+  const utmAliases=['utm campaign','campaign','utm_campaign'];
+  let utmRawKey=null;
+  for(const alias of utmAliases){if(keyMap[alias]){utmRawKey=keyMap[alias];break;}}
+  if(!utmRawKey){const found=Object.keys(keyMap).find(k=>k.includes('utm'));if(found)utmRawKey=keyMap[found];}
+  function get(r,keys){
+    for(const k of(Array.isArray(keys)?keys:[keys])){
+      const kl=k.toLowerCase().replace(/\s+/g,' ').trim();
+      const rk=keyMap[kl];
+      if(rk!==undefined)return String(r[rk]||'').trim();
     }
+    return'';
   }
+  const rows=raw.map(r=>{
+    const opty_id=get(r,['opty_id','opty id','lead id','leadid','lead_id','opportunity id','opportunity_id']);
+    const lt=get(r,['lt','lead type','leadtype','lead_type']);
+    const source=get(r,['source','lead source','leadsource']);
+    const model=get(r,['model','vehicle model','vehiclemodel','bike model']);
+    const city=get(r,['city','lead city']);
+    const state=get(r,['state','lead state']);
+    const dup=get(r,['duplicate check','duplicity check','duplicate','is duplicate','isdup','is_duplicate']);
+    const lead_month_raw=get(r,['lead month','lead_month','leadmonth','month']);
+    const isUnique=dup?dup.toLowerCase()==='unique':true;
+    return{
+      opty_id,lt:lt||'Unknown',source:source||'Unknown',
+      model:canonicalModel(model)||'Unknown',city:city||'Unknown',state:canonicalState(state)||'Unknown',
+      lead_month:normalizeHeroMonth(lead_month_raw),isUnique
+    };
+  }).filter(r=>r.opty_id&&r.lead_month);
+  const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
+  return{rows,diagnostics:{totalRows:raw.length,uniqueIds,dupIds:rows.length-uniqueIds}};
+}
 
-  // Remap + merge a city-indexed matrix in place.
-  // cityCol: which column holds the city index (0 for most; 1 for stcm)
-  // numKeys: total number of key columns (remaining cols are L,R,DMS,CO)
-  function remapMatrix(key, cityCol, numKeys) {
-    const mat = data[key];
-    if (!mat || mat.length === 0) return;
-    const acc = new Map();
-    for (const row of mat) {
-      const newCityI = remap[row[cityCol]];
-      // Build a string key from the remapped index columns
-      let k = '';
-      for (let c = 0; c < numKeys; c++) k += (c === cityCol ? newCityI : row[c]) + '|';
-      if (!acc.has(k)) {
-        const nr = row.slice();
-        nr[cityCol] = newCityI;
-        acc.set(k, nr);
-      } else {
-        const ex = acc.get(k);
-        for (let c = numKeys; c < row.length; c++) ex[c] += row[c];
-      }
+function parseHeroRetailRows(raw){
+  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,heroRows:0,uniqueIds:0}};
+  const keyMap={};
+  Object.keys(raw[0]).forEach(rk=>{keyMap[rk.toLowerCase().replace(/\s+/g,' ').trim()]=rk;});
+  function get(r,keys){
+    for(const k of(Array.isArray(keys)?keys:[keys])){
+      const kl=k.toLowerCase().replace(/\s+/g,' ').trim();
+      const rk=keyMap[kl];
+      if(rk!==undefined)return String(r[rk]||'').trim();
     }
-    data[key] = [...acc.values()];
+    return'';
   }
+  const rows=[];
+  for(const r of raw){
+    const proc=get(r,['process','brand','oem','manufacturer']);
+    if(proc&&proc.toLowerCase()!=='hero')continue;
+    const sourceLeadId=get(r,['sourcelead id','sourcelead_id','source lead id','source_lead_id','sourceleadid','lead id','leadid']);
+    const performanceMonth=normalizeHeroMonth(get(r,['performance month','performancemonth','performance_month','retail month','retailmonth','month']));
+    if(!sourceLeadId||!performanceMonth)continue;
+    rows.push({sourceLeadId,performanceMonth});
+  }
+  const uniqueIds=new Set(rows.map(r=>r.sourceLeadId)).size;
+  return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds}};
+}
 
-  // All matrices that carry a city index column:
-  // [matrixKey, cityCol, numKeyColumns]
-  const CITY_MATS = [
-    ['cm',    0, 2], ['csm',   0, 3], ['cxm',  0, 3],
-    ['stcm',  1, 3], ['cdm',   0, 3], ['cdsm', 0, 4],
-    ['u_cm',  0, 2], ['u_csm', 0, 3], ['u_cxm',0, 3],
-    ['u_stcm',1, 3], ['u_cdm', 0, 3], ['u_cdsm',0,4],
+function joinHeroData(leadResult,retailResult){
+  const{rows:leadRows,diagnostics:leadDiag}=leadResult;
+  const{rows:retailRows,diagnostics:retailDiag}=retailResult;
+  const retailMap=new Map();
+  for(const rr of retailRows){
+    if(!retailMap.has(rr.sourceLeadId))retailMap.set(rr.sourceLeadId,[]);
+    retailMap.get(rr.sourceLeadId).push(rr);
+  }
+  let matched=0,unmatched=0,multiRetail=0;
+  const joined=leadRows.map(lr=>{
+    const retail=retailMap.get(lr.opty_id)||[];
+    const isBooked=retail.length>0;
+    if(isBooked){matched++;if(retail.length>1)multiRetail++;}else unmatched++;
+    const booking_month=isBooked
+      ?retail.sort((a,b)=>heroMonthOrder(a.performanceMonth)-heroMonthOrder(b.performanceMonth))[0].performanceMonth
+      :'';
+    return{opty_id:lr.opty_id,lt:lr.lt,source:lr.source,model:lr.model,city:lr.city,state:lr.state,
+      lead_month:lr.lead_month,booking_month,isUnique:lr.isUnique,isBooked};
+  });
+  return{rows:joined,diagnostics:{
+    leadTotalRows:leadDiag.totalRows,leadUniqueIds:leadDiag.uniqueIds,leadDupIds:leadDiag.dupIds,
+    retailTotalRows:retailDiag.totalRows,retailHeroRows:retailDiag.heroRows,retailUniqueIds:retailDiag.uniqueIds,
+    matched,unmatched,multiRetail}};
+}
+
+function HeroDiagnostics({d,visible,onToggle}){
+  if(!d)return null;
+  const items=[
+    {l:'Lead rows',v:d.leadTotalRows},{l:'Unique IDs',v:d.leadUniqueIds},
+    {l:'Retail rows',v:d.retailTotalRows},{l:'Hero retail',v:d.retailHeroRows},
+    {l:'Matched',v:d.matched},{l:'Unmatched',v:d.unmatched},
   ];
-  for (const [mk, cc, nk] of CITY_MATS) remapMatrix(mk, cc, nk);
+  return ce('div',{style:{background:'#FFF7ED',borderBottom:'1px solid #FDBA74',padding:'5px 24px',fontSize:10,fontFamily:'DM Mono,monospace',color:'#7C2D12',cursor:'pointer'},onClick:onToggle},
+    ce('span',{style:{fontWeight:700,marginRight:8}},'Data:'),
+    visible
+      ?ce('span',null,items.map((it,i)=>ce('span',{key:i,style:{marginRight:14}},it.l+': ',ce('strong',null,it.v.toLocaleString('en-IN')))))
+      :ce('span',null,d.leadUniqueIds.toLocaleString('en-IN')+' leads · '+d.retailHeroRows.toLocaleString('en-IN')+' retail · '+d.matched.toLocaleString('en-IN')+' matched ',ce('span',{style:{color:'#EA580C'}},'▼'))
+  );
+}
 
-  maps.city       = newCityArr;
-  maps.city_state = newCityState;
+/* buildPayload: Hero flat rows → TVS compact matrix format */
+function buildPayload(joinedRows){
+  const now=Date.now();
+  const lmArr=[],lmMap=Object.create(null);
+  const srcArr=[],srcMap=Object.create(null);
+  const mdlArr=[],mdlMap=Object.create(null);
+  const stArr=[],stMap=Object.create(null);
+  const ltArr=[],ltMap=Object.create(null);
+  const cityArr=[],cityMap=Object.create(null);
+  function idx(arr,map,val){if(val in map)return map[val];const i=arr.length;arr.push(val);map[val]=i;return i;}
+  for(const r of joinedRows){
+    idx(lmArr,lmMap,r.lead_month||'Unknown');
+    idx(srcArr,srcMap,r.source||'Unknown');
+    idx(mdlArr,mdlMap,r.model||'Unknown');
+    idx(stArr,stMap,r.state||'Unknown');
+    idx(ltArr,ltMap,r.lt||'Unknown');
+    idx(cityArr,cityMap,r.city||'Unknown');
+  }
+  const city_state=new Array(cityArr.length).fill(0);
+  for(const r of joinedRows) city_state[cityMap[r.city||'Unknown']]=stMap[r.state||'Unknown'];
+
+  function isRetailed(r){
+    if(!r.isBooked||!r.booking_month||!r.lead_month)return false;
+    const d=heroMonthOrder(r.booking_month)-heroMonthOrder(r.lead_month);
+    return d>=0&&d<=2;
+  }
+
+  const monthlyA=new Map(),smA=new Map(),mmA=new Map(),stmA=new Map(),ltmA=new Map();
+  const mxstA=new Map(),cmA=new Map(),csmA=new Map(),cxmA=new Map(),univA=new Map();
+  const u_mA=new Map(),u_smA=new Map(),u_mmA=new Map(),u_stmA=new Map(),u_ltmA=new Map();
+  const u_mxstA=new Map(),u_cmA=new Map(),u_csmA=new Map(),u_cxmA=new Map(),u_univA=new Map();
+
+  function a2(m,k,L,R){const e=m.get(k);if(e){e[0]+=L;e[1]+=R;}else m.set(k,[L,R]);}
+  function a1(m,k,L){const e=m.get(k);if(e){e[0]+=L;}else m.set(k,[L]);}
+
+  for(const r of joinedRows){
+    const li=lmMap[r.lead_month||'Unknown'];
+    const si=srcMap[r.source||'Unknown'];
+    const mi=mdlMap[r.model||'Unknown'];
+    const sti=stMap[r.state||'Unknown'];
+    const lti=ltMap[r.lt||'Unknown'];
+    const ci=cityMap[r.city||'Unknown'];
+    const L=1,R=isRetailed(r)?1:0;
+    a2(monthlyA,li+'',L,R);
+    a2(smA,si+'|'+li,L,R);
+    a2(mmA,mi+'|'+si+'|'+li,L,R);
+    a2(stmA,sti+'|'+si+'|'+li,L,R);
+    a2(ltmA,lti+'|'+si+'|'+li,L,R);
+    a1(mxstA,mi+'|'+sti+'|'+li,L);
+    a2(cmA,ci+'|'+li,L,R);
+    a2(csmA,ci+'|'+si+'|'+li,L,R);
+    a2(cxmA,ci+'|'+mi+'|'+li,L,R);
+    a2(univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+li,L,R);
+    if(r.isUnique){
+      a2(u_mA,li+'',L,R);
+      a2(u_smA,si+'|'+li,L,R);
+      a2(u_mmA,mi+'|'+si+'|'+li,L,R);
+      a2(u_stmA,sti+'|'+si+'|'+li,L,R);
+      a2(u_ltmA,lti+'|'+si+'|'+li,L,R);
+      a1(u_mxstA,mi+'|'+sti+'|'+li,L);
+      a2(u_cmA,ci+'|'+li,L,R);
+      a2(u_csmA,ci+'|'+si+'|'+li,L,R);
+      a2(u_cxmA,ci+'|'+mi+'|'+li,L,R);
+      a2(u_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+li,L,R);
+    }
+  }
+  const f1=m=>[...m.entries()].map(([k,v])=>[+k,v[0],v[1]]);
+  const f2=m=>[...m.entries()].map(([k,v])=>{const[a,b]=k.split('|');return[+a,+b,v[0],v[1]];});
+  const f3=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0],v[1]];});
+  const f3L=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0]];});
+  const f5=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e]=k.split('|');return[+a,+b,+c,+d,+e,v[0],v[1]];});
+  return{
+    t:now,
+    maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state},
+    monthly:f1(monthlyA),sm:f2(smA),mm:f3(mmA),stm:f3(stmA),ltm:f3(ltmA),
+    mxst:f3L(mxstA),cm:f2(cmA),csm:f3(csmA),cxm:f3(cxmA),univ:f5(univA),
+    u_monthly:f1(u_mA),u_sm:f2(u_smA),u_mm:f3(u_mmA),u_stm:f3(u_stmA),u_ltm:f3(u_ltmA),
+    u_mxst:f3L(u_mxstA),u_cm:f2(u_cmA),u_csm:f3(u_csmA),u_cxm:f3(u_cxmA),u_univ:f5(u_univA),
+    disp:[],u_disp:[],zm:[],u_zm:[],bdm:[],u_bdm:[],
+    mlt:[],stlt:[],cdm:[],cdsm:[],stcm:[],
+    u_mlt:[],u_stlt:[],u_cdm:[],u_cdsm:[],u_stcm:[],
+    stdm:[],mxdl:[],ltdl:[],u_stdm:[],u_mxdl:[],u_ltdl:[],
+    rt_cols:0,
+  };
+}
+
+function HeroSyncScreen({onSync,syncing,syncErr}){
+  return ce('div',{className:'auth-screen'},
+    ce('div',{className:'auth-card'},
+      ce('div',{style:{display:'inline-flex',alignItems:'center',gap:12,background:'#9A3412',padding:'12px 24px',borderRadius:12,marginBottom:20,boxShadow:'0 4px 20px rgba(194,65,12,.35)'}},
+        ce('div',{style:{width:36,height:36,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:900,color:'#EA580C'}},'H'),
+        ce('div',{style:{textAlign:'left'}},
+          ce('div',{style:{fontSize:14,fontWeight:800,color:'#fff',letterSpacing:'-.02em'}},'Hero MotoCorp'),
+          ce('div',{style:{fontSize:9,color:'#FED7AA',letterSpacing:'.06em',fontWeight:600}},'LEAD DISPOSITION DASHBOARD v2.0')
+        )
+      ),
+      ce('h2',{style:{fontSize:18,fontWeight:700,color:'#111827',margin:'0 0 8px'}},syncing?'Loading data\u2026':'Load Dashboard Data'),
+      ce('p',{style:{fontSize:12,color:'#6b7280',margin:'0 0 20px',lineHeight:1.6}},syncing?'Fetching from Google Sheets\u2026':'Click below to load live data from Google Sheets.'),
+      syncing
+        ?ce('div',{style:{padding:'12px 0',display:'flex',alignItems:'center',justifyContent:'center',gap:10,color:'#6b7280',fontSize:13}},
+            ce('div',{style:{width:20,height:20,border:'2px solid #FFEDD5',borderTopColor:'#EA580C',borderRadius:'50%',animation:'spin .7s linear infinite'}}),'Syncing\u2026')
+        :ce('button',{onClick:onSync,className:'auth-btn'},'🔄 Load Data'),
+      syncErr&&ce('div',{className:'auth-error'},syncErr)
+    )
+  );
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -776,13 +690,13 @@ function SummaryBar({ kpis }) {
   if (!kpis || kpis.length === 0) return null;
   return ce('div', {
     style:{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:0,
-            background:'#fff', border:'1px solid #FED7AA', borderLeft:'4px solid #EA580C',
+            background:'#fff', border:'1px solid #BFDBFE', borderLeft:'4px solid #003087',
             borderRadius:8, padding:'7px 14px', marginBottom:14,
             boxShadow:'0 1px 3px rgba(0,48,135,0.07)' }
   },
     ce('span', { style:{ fontSize:9, fontWeight:800, color:'#003087', textTransform:'uppercase',
                          letterSpacing:'.1em', paddingRight:12, marginRight:4, alignSelf:'center',
-                         borderRight:'1px solid #FED7AA', whiteSpace:'nowrap', minWidth:52 } },
+                         borderRight:'1px solid #BFDBFE', whiteSpace:'nowrap', minWidth:52 } },
       'Summary'),
     kpis.map((k, i) => ce('div', {
       key: i,
@@ -906,7 +820,7 @@ const MultiSelect = React.memo(function MultiSelect({ label, options, selected, 
       ce('div', { className:'ms-dropdown-header' },
         ce('span', { style:{fontSize:10,fontWeight:700,color:'#475569',textTransform:'uppercase',letterSpacing:'.06em'} }, label),
         ce('div', { style:{display:'flex',gap:8} },
-          ce('button', { onClick: selectAll,   style:{fontSize:10,background:'none',border:'none',color:'#E31837',cursor:'pointer',fontWeight:700} }, 'All'),
+          ce('button', { onClick: selectAll,   style:{fontSize:10,background:'none',border:'none',color:'#EA580C',cursor:'pointer',fontWeight:700} }, 'All'),
           ce('button', { onClick: clearFilter, style:{fontSize:10,background:'none',border:'none',color:'#64748B',cursor:'pointer',fontWeight:700} }, 'Clear')
         )
       ),
@@ -993,7 +907,7 @@ const DimGrid = React.memo(function DimGrid({
     },
       ce('td', { className: tdClass, style: isTotal ? { color:'#1A237E' } : {} }, labelContent),
       ce('td', { key:'tl' }, Nf(tot.l)),
-      ce('td', { key:'tr', style:{ color:'#E31837', fontWeight:700 } }, Nf(tot.r)),
+      ce('td', { key:'tr', style:{ color:'#EA580C', fontWeight:700 } }, Nf(tot.r)),
       ce('td', { key:'tc' }, tot.l > 0 ? Pf(contrib(tot.l)) : '—'),
       ce('td', { key:'tl2r', style:{ color:'#D97706', fontWeight:700 } }, tot.l2r > 0 ? Pf(tot.l2r) : '—'),
       ...(viewerMode ? [] : visibleCols.flatMap(col => colCells(srcMap, col)))
@@ -1293,7 +1207,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
         labels: trendData.map(d => d.m),
         datasets:[
           { label:'Leads',   data:trendData.map(d=>d.l), backgroundColor:'#0030872a', borderColor:'#003087', borderWidth:1.5, borderRadius:3, yAxisID:'y' },
-          { label:'Retails', data:trendData.map(d=>d.r), backgroundColor:'#E3183755', borderColor:'#E31837', borderWidth:1.5, borderRadius:3, yAxisID:'y' },
+          { label:'Retails', data:trendData.map(d=>d.r), backgroundColor:'#EA580C55', borderColor:'#EA580C', borderWidth:1.5, borderRadius:3, yAxisID:'y' },
           { label:'L2R%',    data:trendData.map(d=>parseFloat(d.l2r.toFixed(2))), type:'line', borderColor:'#F5A623', backgroundColor:'transparent', borderWidth:2.5, pointRadius:5, pointBackgroundColor:'#F5A623', yAxisID:'y2', tension:.3 },
         ]
       },
@@ -1316,7 +1230,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
 
   const KPIs = [
     { label:'Total Leads',        value:Nf(totals.l),                      sub:'All sources',             color:'#003087' },
-    { label:'Total Retails',      value:Nf(totals.r),                      sub:'Converted',               color:'#E31837' },
+    { label:'Total Retails',      value:Nf(totals.r),                      sub:'Converted',               color:'#EA580C' },
     { label:'L2R %',              value:totals.l2r.toFixed(1)+'%',         sub:'Retails ÷ Leads',         color:'#F5A623' },
     { label:'Paid L2R%',          value:totals.pL2r.toFixed(1)+'%',        sub:Nf(totals.pL)+' paid leads',  color:'#7C3AED' },
     { label:'Organic L2R%',       value:totals.oL2r.toFixed(1)+'%',        sub:Nf(totals.oL)+' organic leads', color:'#059669' },
@@ -1363,7 +1277,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
           const aoa=[['Source','Leads','Retails','Contrib%','L2R%']];
           for (const s of srcBreak) aoa.push([s.src,s.l,s.r,+(s.l/totals.l*100).toFixed(2),+s.l2r.toFixed(2)]);
           aoa.push(['∑ Total',totals.l,totals.r,'100.0%',+totals.l2r.toFixed(2)]);
-          exportXlsx({'Source Summary':aoa},'Hero_Overview_Source');
+          exportXlsx({'Source Summary':aoa},'TVS_Overview_Source');
         }})
       ),
       ce('div', { className:'scroll-x' },
@@ -1379,14 +1293,14 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
             ...srcBreak.map((s,i) => ce('tr', { key:i },
               ce('td', { className:'label' }, s.src),
               ce('td', null, Nf(s.l)),
-              ce('td', { style:{color:'#E31837',fontWeight:700} }, Nf(s.r)),
+              ce('td', { style:{color:'#EA580C',fontWeight:700} }, Nf(s.r)),
               ce('td', null, totals.l > 0 ? Pf(s.l/totals.l*100) : '—'),
               ce('td', { style:{color:'#D97706',fontWeight:600} }, Pf(s.l2r)),
             )),
             ce('tr', { className:'total-row' },
               ce('td', { className:'label' }, '∑ Grand Total'),
               ce('td', null, Nf(totals.l)),
-              ce('td', { style:{color:'#E31837',fontWeight:700} }, Nf(totals.r)),
+              ce('td', { style:{color:'#EA580C',fontWeight:700} }, Nf(totals.r)),
               ce('td', null, '100.0%'),
               ce('td', null, ce('span', { style:{color:'#D97706',fontWeight:700} }, totals.l2r.toFixed(1)+'%')),
             )
@@ -1402,7 +1316,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
           for (const mdl of heatData.top10) {
             aoa.push([mdl, ...heatData.top15.map(st => heatData.cell.get(mdl+'\x00'+st) || 0)]);
           }
-          exportXlsx({'Model×State':aoa}, 'Hero_Model_State_Heatmap');
+          exportXlsx({'Model×State':aoa}, 'TVS_Model_State_Heatmap');
         }})
       ),
       ce('div', { style:{fontSize:11,color:'#94A3B8',marginBottom:10} }, 'Cell shows lead count. Darker = higher volume. Month / Model / State filters apply.'),
@@ -1509,7 +1423,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
               return ce('tr',{key:src},
                 ce('td',{className:'label'},src),
                 ce('td',null,Nf(tot.l)),
-                ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(tot.r)),
+                ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,gL>0?Pf(tot.l/gL*100):'—'),
                 ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
               );
@@ -1517,7 +1431,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
             ce('tr',{key:'gtotal',className:'total-row'},
               ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
               ce('td',null,Nf(grand.l)),
-              ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(grand.r)),
+              ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(grand.r)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
             )
@@ -1581,7 +1495,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
               return ce('tr',{key:src},
                 ce('td',{className:'label'},src),
                 ce('td',null,Nf(tot.l)),
-                ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(tot.r)),
+                ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,crossMonthTotals.l>0?Pf(tot.l/crossMonthTotals.l*100):'—'),
                 ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
               );
@@ -1589,7 +1503,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
             ce('tr',{key:'gtotal',className:'total-row'},
               ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
               ce('td',null,Nf(crossMonthTotals.l)),
-              ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(crossMonthTotals.r)),
+              ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(crossMonthTotals.r)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#D97706',fontWeight:700}},crossMonthTotals.l2r>0?Pf(crossMonthTotals.l2r):'—'),
             )
@@ -1991,7 +1905,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
               state
             )
           ),
-          ce('td',null,Nf(sLeads)),ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(sRets)),
+          ce('td',null,Nf(sLeads)),ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(sRets)),
           ce('td',null,zLeads>0?Pf(sLeads/zLeads*100):'—'),ce('td',{style:{color:'#D97706',fontWeight:600}},sL2R>0?Pf(sL2R):'—'),
           ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(sSrcMap,grp,zLeads)))
         ));
@@ -2051,7 +1965,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     // Grand Total at bottom
     bodyRows.push(ce('tr',{key:'gtotal',className:'total-row'},
       ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
-      ce('td',null,Nf(gL)),ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(gR)),
+      ce('td',null,Nf(gL)),ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(gR)),
       ce('td',null,'100.0%'),ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
       ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(grandSrc,grp)))
     ));
@@ -2264,353 +2178,6 @@ const FilterBar = React.memo(function FilterBar({ data, filters, onFiltersChange
 });
 
 /* ════════════════════════════════════════════════════════════════════
-   AUTH SCREEN COMPONENTS
-   ════════════════════════════════════════════════════════════════════ */
-function _TvsAuthLogo() {
-  return ce('div', { className:'auth-logo' },
-    ce('div', { className:'auth-logo-icon' }, 'TVS'),
-    ce('div', null,
-      ce('div', { style:{fontSize:15,fontWeight:800,color:'#0f172a',letterSpacing:'-.03em'} }, 'TVS Motor Company'),
-      ce('div', { style:{fontSize:11,color:'#E31837',fontWeight:600} }, 'Lead Disposition Dashboard v2.0'),
-    )
-  );
-}
-
-function _TvsLoginScreen({ onLogin }) {
-  const [email, setEmail]     = useState('');
-  const [loading, setLoading] = useState(false);
-  const [err, setErr]         = useState('');
-
-  async function handleSubmit(ev) {
-    ev.preventDefault();
-    const e = email.trim().toLowerCase();
-    if (!e) return;
-    setLoading(true); setErr('');
-    try {
-      const res = await apiFetchRole(e);
-      if (res.error) throw new Error(res.error);
-      onLogin(e, '', res.role);
-    } catch(ex) { setErr('Could not verify access: ' + ex.message); }
-    finally { setLoading(false); }
-  }
-
-  return ce('div', { className:'auth-overlay' },
-    ce('div', { className:'auth-card' },
-      ce(_TvsAuthLogo),
-      ce('div', { className:'auth-title' }, 'Sign In'),
-      ce('div', { className:'auth-subtitle' }, 'Enter your work email to access the dashboard.'),
-      err && ce('div', { className:'auth-err' }, err),
-      ce('form', { onSubmit: handleSubmit },
-        ce('div', { className:'auth-input-wrap' },
-          ce('label', { className:'auth-label' }, 'Work Email'),
-          ce('input', {
-            className:'auth-input', type:'email', required:true,
-            placeholder:'you@girnarsoft.com',
-            value:email, onChange:ev=>setEmail(ev.target.value), autoFocus:true,
-          })
-        ),
-        ce('button', { className:'auth-btn', type:'submit', disabled:loading },
-          loading ? 'Checking…' : 'Continue →')
-      ),
-      ce('div', { className:'auth-note' },
-        'Access is limited to @girnarsoft.com and @girnarcare.com email addresses.')
-    )
-  );
-}
-
-function _TvsRequestAccessScreen({ email, onLogin, onBack }) {
-  const [name, setName]       = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent]       = useState(false);
-  const [err, setErr]         = useState('');
-
-  async function handleSubmit(ev) {
-    ev.preventDefault();
-    if (!name.trim()) return;
-    setLoading(true); setErr('');
-    try {
-      const res = await apiRequestAccess(email, name.trim());
-      if (res.error) throw new Error(res.error);
-      if (res.role) { onLogin(email, name.trim(), res.role); return; }
-      setSent(true);
-    } catch(ex) { setErr('Request failed: ' + ex.message); }
-    finally { setLoading(false); }
-  }
-
-  if (sent) return ce('div', { className:'auth-overlay' },
-    ce('div', { className:'auth-card' },
-      ce(_TvsAuthLogo),
-      ce('div', { className:'auth-ok' }, '✓ Access request submitted.'),
-      ce('div', { style:{fontSize:13,color:'#475569',lineHeight:1.6} },
-        "Your request has been sent to an admin. You'll be able to sign in once approved."),
-      ce('button', { className:'auth-back', onClick:onBack }, '← Back to sign in')
-    )
-  );
-
-  return ce('div', { className:'auth-overlay' },
-    ce('div', { className:'auth-card' },
-      ce(_TvsAuthLogo),
-      ce('div', { className:'auth-title' }, 'Request Access'),
-      ce('div', { className:'auth-subtitle' }, "You don't have access yet. Submit a request and an admin will review it."),
-      err && ce('div', { className:'auth-err' }, err),
-      ce('div', { style:{background:'#F0F4FF',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#475569',marginBottom:16,fontFamily:'DM Mono,monospace'} }, email),
-      ce('form', { onSubmit: handleSubmit },
-        ce('div', { className:'auth-input-wrap' },
-          ce('label', { className:'auth-label' }, 'Your Name'),
-          ce('input', {
-            className:'auth-input', type:'text', required:true,
-            placeholder:'Full name',
-            value:name, onChange:ev=>setName(ev.target.value), autoFocus:true,
-          })
-        ),
-        ce('button', { className:'auth-btn', type:'submit', disabled:loading||!name.trim() },
-          loading ? 'Submitting…' : 'Request Access')
-      ),
-      ce('button', { className:'auth-back', onClick:onBack }, '← Use a different email')
-    )
-  );
-}
-
-function _TvsPendingScreen({ email, onRefresh, onBack }) {
-  const [loading, setLoading] = useState(false);
-  async function handleRefresh() {
-    setLoading(true);
-    try { const res = await apiFetchRole(email); onRefresh(res.role); }
-    catch(e) {} finally { setLoading(false); }
-  }
-  useEffect(() => {
-    const id = setInterval(async () => {
-      try { const res = await apiFetchRole(email); if (res.role !== 'pending') onRefresh(res.role); }
-      catch(e) {}
-    }, 30000);
-    return () => clearInterval(id);
-  }, [email]);
-  return ce('div', { className:'auth-overlay' },
-    ce('div', { className:'auth-card' },
-      ce(_TvsAuthLogo),
-      ce('div', { className:'auth-title' }, 'Access Pending'),
-      ce('div', { className:'auth-subtitle' }, "Your access request is awaiting admin approval."),
-      ce('div', { style:{background:'#FEF3C7',border:'1px solid #FDE68A',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#92400E',marginBottom:20} },
-        '⏳ Request pending review — auto-checking every 30s'),
-      ce('button', { className:'auth-btn', onClick:handleRefresh, disabled:loading },
-        loading ? 'Checking…' : '↻ Check Now'),
-      ce('button', { className:'auth-back', onClick:onBack }, '← Use a different email')
-    )
-  );
-}
-
-function _TvsRestrictedScreen({ onBack }) {
-  return ce('div', { className:'auth-overlay' },
-    ce('div', { className:'auth-card' },
-      ce(_TvsAuthLogo),
-      ce('div', { className:'auth-title' }, 'Access Denied'),
-      ce('div', { className:'auth-subtitle' },
-        'This dashboard is only accessible to @girnarsoft.com and @girnarcare.com email addresses.'),
-      ce('div', { style:{background:'#FEE2E2',border:'1px solid #FECACA',borderRadius:8,padding:'10px 14px',fontSize:12,color:'#B91C1C',marginBottom:20} },
-        '⛔ Your email domain is not authorised'),
-      ce('button', { className:'auth-back', onClick:onBack }, '← Try a different email')
-    )
-  );
-}
-
-function _TvsAdminPanel({ auth, onLogout, onViewDashboard }) {
-  const [pending, setPending]     = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [roleSelections, setRS]   = useState({});
-  const [processing, setProc]     = useState({});
-  const [msg, setMsg]             = useState('');
-  const [users, setUsers]         = useState(null);
-  const [usersLoading, setUL]     = useState(true);
-  const [userRS, setUserRS]       = useState({});
-  const [userProc, setUserProc]   = useState({});
-  const [userMsg, setUserMsg]     = useState('');
-
-  useEffect(() => { loadPending(); loadUsers(); }, []);
-
-  async function loadPending() {
-    setLoading(true);
-    try { const res = await apiGetPending(auth.email); setPending(res.pending || {}); }
-    catch(e) { setPending({}); } finally { setLoading(false); }
-  }
-
-  async function loadUsers() {
-    setUL(true);
-    try { const res = await apiGetUsers(auth.email); setUsers(res.users || {}); }
-    catch(e) { setUsers({}); } finally { setUL(false); }
-  }
-
-  async function handleReview(targetEmail, decision) {
-    const role = roleSelections[targetEmail] || 'viewer';
-    setProc(p => ({...p, [targetEmail]:true}));
-    try {
-      await apiReview(auth.email, targetEmail, decision, role);
-      setPending(p => { const n={...p}; delete n[targetEmail]; return n; });
-      setMsg(decision === 'approve' ? `✓ Approved ${targetEmail} as ${role}` : `✓ Rejected ${targetEmail}`);
-      setTimeout(() => setMsg(''), 5000);
-      loadUsers();
-    } catch(e) { alert('Error: ' + e.message); }
-    finally { setProc(p => ({...p, [targetEmail]:false})); }
-  }
-
-  async function handleUpdateRole(targetEmail, newRole) {
-    setUserProc(p => ({...p, [targetEmail]:true}));
-    try {
-      await apiUpdateRole(auth.email, targetEmail, newRole);
-      setUsers(u => {
-        const n = {...u};
-        if (newRole === 'remove') delete n[targetEmail];
-        else n[targetEmail] = {...(n[targetEmail]||{}), role: newRole};
-        return n;
-      });
-      setUserMsg('✓ Updated ' + targetEmail);
-      setTimeout(() => setUserMsg(''), 4000);
-    } catch(e) { alert('Error: ' + e.message); }
-    finally { setUserProc(p => ({...p, [targetEmail]:false})); }
-  }
-
-  const ROLE_BADGE = {
-    admin:  { bg:'#EDE9FE', color:'#6D28D9', label:'admin' },
-    full:   { bg:'#D1FAE5', color:'#065F46', label:'full'  },
-    viewer: { bg:'#DBEAFE', color:'#1E40AF', label:'viewer'},
-  };
-
-  const entries = pending ? Object.entries(pending) : [];
-  const userEntries = users
-    ? Object.entries(users).sort((a,b) => {
-        const order = {admin:0, full:1, viewer:2};
-        return (order[a[1].role]||3) - (order[b[1].role]||3);
-      })
-    : [];
-
-  const navbar = ce('div', { style:{background:'#fff',borderBottom:'1px solid #E2E8F0',padding:'12px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 1px 4px rgba(0,0,0,.06)'} },
-    ce('div', { style:{display:'flex',alignItems:'center',gap:12} },
-      ce('div', { style:{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,#C2410C,#EA580C)',display:'flex',alignItems:'center',justifyContent:'center'} },
-        ce('span', { style:{fontSize:14,fontWeight:900,color:'#EA580C',fontFamily:'DM Mono,monospace',letterSpacing:'-.04em'} }, 'H')
-      ),
-      ce('div', null,
-        ce('div', { style:{fontSize:13,fontWeight:800,color:'#0f172a'} }, 'Hero MotoCorp'),
-        ce('div', { style:{fontSize:10,color:'#7C3AED',fontWeight:600} }, 'Admin Panel — Lead Disposition Dashboard'),
-      )
-    ),
-    ce('div', { style:{display:'flex',alignItems:'center',gap:10} },
-      ce('div', { className:'user-chip' },
-        ce('div', { className:'user-avatar' }, auth.email[0].toUpperCase()),
-        ce('span', { className:'user-name' }, auth.email),
-        ce('span', { className:'user-role-badge role-admin' }, 'Admin'),
-      ),
-      onViewDashboard && ce('button', { className:'btn btn-secondary', style:{fontSize:11}, onClick:onViewDashboard }, '📊 View Dashboard'),
-      ce('button', { className:'btn btn-secondary', style:{fontSize:11}, onClick:onLogout }, 'Sign Out'),
-    )
-  );
-
-  return ce('div', { style:{minHeight:'100vh',background:'#f8fafc'} },
-    navbar,
-    ce('div', { style:{maxWidth:860,margin:'40px auto',padding:'0 20px',display:'flex',flexDirection:'column',gap:20} },
-
-      // ── Access Requests card ──
-      ce('div', { className:'card', style:{padding:'28px 32px'} },
-        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4} },
-          ce('div', { className:'modal-title' }, 'Access Requests'),
-          ce('button', { className:'btn btn-secondary', style:{fontSize:11}, onClick:loadPending, disabled:loading }, loading ? 'Loading…' : '⟳ Refresh')
-        ),
-        ce('div', { className:'modal-sub' }, 'Approve or reject pending access requests.'),
-        msg && ce('div', { className:'auth-ok', style:{marginBottom:12} }, msg),
-        loading
-          ? ce('div', { style:{textAlign:'center',padding:40} }, ce('div', { className:'spinner', style:{margin:'0 auto'} }))
-          : entries.length === 0
-            ? ce('div', { className:'no-pending' }, '🎉 No pending requests')
-            : entries.map(([email, info]) => {
-                const busy = processing[email];
-                const sel  = roleSelections[email] || 'viewer';
-                return ce('div', { key:email, className:'req-card' },
-                  ce('div', { className:'req-card-info' },
-                    ce('div', { className:'req-card-name' }, info.name || '(no name)'),
-                    ce('div', { className:'req-card-email' }, email),
-                    ce('div', { className:'req-card-time' },
-                      'Requested: ' + new Date(info.requestedAt).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})),
-                  ),
-                  ce('div', { className:'req-card-actions' },
-                    ce('select', {
-                      className:'role-sel', value:sel,
-                      onChange: ev => setRS(r=>({...r,[email]:ev.target.value}))
-                    },
-                      ce('option',{value:'viewer'},'Viewer'),
-                      ce('option',{value:'full'},'Full Access'),
-                    ),
-                    ce('button', { className:'btn-approve', disabled:busy, onClick:()=>handleReview(email,'approve') }, busy?'…':'Approve'),
-                    ce('button', { className:'btn-reject',  disabled:busy, onClick:()=>handleReview(email,'reject')  }, busy?'…':'Reject'),
-                  )
-                );
-              })
-      ),
-
-      // ── User Access Management card ──
-      ce('div', { className:'card', style:{padding:'28px 32px'} },
-        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4} },
-          ce('div', { className:'modal-title' }, '👥 User Access Management'),
-          ce('button', { className:'btn btn-secondary', style:{fontSize:11}, onClick:loadUsers, disabled:usersLoading }, usersLoading ? 'Loading…' : '⟳ Refresh')
-        ),
-        ce('div', { className:'modal-sub', style:{marginBottom:12} },
-          ce('span', { style:{marginRight:12} }, ce('b',null,'pending'), ' — awaiting access'),
-          ce('span', { style:{marginRight:12} }, ce('b',null,'viewer'), ' — totals only (no source breakdown)'),
-          ce('span', { style:{marginRight:12} }, ce('b',null,'full'), ' — all columns'),
-          ce('span', null, ce('b',null,'admin'), ' — full + manage users'),
-        ),
-        userMsg && ce('div', { className:'auth-ok', style:{marginBottom:12} }, userMsg),
-        usersLoading
-          ? ce('div', { style:{textAlign:'center',padding:40} }, ce('div', { className:'spinner', style:{margin:'0 auto'} }))
-          : ce('div', { style:{overflowX:'auto'} },
-              ce('table', { style:{width:'100%',borderCollapse:'collapse',fontSize:12} },
-                ce('thead', null,
-                  ce('tr', { style:{background:'#1A237E',color:'#fff',textAlign:'left'} },
-                    ce('th', { style:{padding:'9px 12px',fontWeight:700,letterSpacing:'.06em',fontSize:11} }, 'EMAIL'),
-                    ce('th', { style:{padding:'9px 12px',fontWeight:700,letterSpacing:'.06em',fontSize:11} }, 'NAME'),
-                    ce('th', { style:{padding:'9px 12px',fontWeight:700,letterSpacing:'.06em',fontSize:11} }, 'ROLE'),
-                    ce('th', { style:{padding:'9px 12px',fontWeight:700,letterSpacing:'.06em',fontSize:11} }, 'CHANGE TO'),
-                  )
-                ),
-                ce('tbody', null,
-                  userEntries.map(([email, info], idx) => {
-                    const isAdm = info.role === 'admin';
-                    const badge = ROLE_BADGE[info.role] || ROLE_BADGE.viewer;
-                    const busy  = userProc[email];
-                    const sel   = userRS[email] || info.role;
-                    return ce('tr', { key:email, style:{background: idx%2===0?'#fff':'#F8FAFC', borderBottom:'1px solid #E2E8F0'} },
-                      ce('td', { style:{padding:'9px 12px',color:'#374151'} }, email),
-                      ce('td', { style:{padding:'9px 12px',color:'#374151'} }, info.name || '—'),
-                      ce('td', { style:{padding:'9px 12px'} },
-                        ce('span', { style:{background:badge.bg,color:badge.color,padding:'2px 10px',borderRadius:12,fontWeight:700,fontSize:11} }, badge.label)
-                      ),
-                      ce('td', { style:{padding:'9px 12px'} },
-                        isAdm
-                          ? ce('span', { style:{color:'#94A3B8'} }, '—')
-                          : ce('div', { style:{display:'flex',gap:6,alignItems:'center'} },
-                              ce('select', {
-                                className:'role-sel', value:sel,
-                                onChange: ev => setUserRS(r=>({...r,[email]:ev.target.value}))
-                              },
-                                ce('option',{value:'viewer'},'Viewer'),
-                                ce('option',{value:'full'},'Full'),
-                                ce('option',{value:'remove'},'Remove Access'),
-                              ),
-                              ce('button', {
-                                className:'btn-approve', disabled:busy || sel===info.role,
-                                style:{padding:'4px 12px',fontSize:11},
-                                onClick:()=>handleUpdateRole(email, sel)
-                              }, busy?'…':'Save'),
-                            )
-                      ),
-                    );
-                  })
-                )
-              )
-            )
-      )
-    )
-  );
-}
-
-/* ════════════════════════════════════════════════════════════════════
    CROSS-TAB GRID  (rows × column-values, e.g. State × Model)
    ════════════════════════════════════════════════════════════════════ */
 // Builds { grand, colKeys, rowKeys, rowAggs } from a 3-dim compact matrix.
@@ -2695,7 +2262,7 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
             return ce('tr',{key:rk},
               ce('td',{className:'label',style:{position:'sticky',left:0,background:'#FAFAFA',zIndex:1}},rk),
               ce('td',null,Nf(da.total.l)),
-              ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(da.total.r)),
+              ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(da.total.r)),
               ce('td',null,grand.l>0?Pf(da.total.l/grand.l*100):'—'),
               ce('td',{style:{color:'#D97706',fontWeight:700}},da.total.l2r>0?Pf(da.total.l2r):'—'),
               ...(showRT?[ce('td',null,Nf(da.total.dm)),ce('td',null,Nf(da.total.co))]:[]),
@@ -2703,7 +2270,7 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
                 const ca=da.colAggs[ck]||{l:0,r:0,l2r:0};
                 return[
                   ce('td',{key:ck+'l',style:{borderLeft:'2px solid #BFDBFE'}},ca.l>0?Nf(ca.l):'—'),
-                  ce('td',{key:ck+'r',style:{color:'#E31837',fontWeight:700}},ca.r>0?Nf(ca.r):'—'),
+                  ce('td',{key:ck+'r',style:{color:'#EA580C',fontWeight:700}},ca.r>0?Nf(ca.r):'—'),
                   ce('td',{key:ck+'l2r',style:{color:'#D97706'}},ca.l2r>0?Pf(ca.l2r):'—'),
                 ];
               })
@@ -2712,7 +2279,7 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
           ce('tr',{className:'total-row'},
             ce('td',{className:'label',style:{color:'#1A237E',position:'sticky',left:0,zIndex:1}},'∑ Grand Total'),
             ce('td',null,Nf(grand.l)),
-            ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(grand.r)),
+            ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(grand.r)),
             ce('td',null,'100.0%'),
             ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
             ...(showRT?[ce('td',null,Nf(grand.dm)),ce('td',null,Nf(grand.co))]:[]),
@@ -2721,7 +2288,7 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
               const tL2r=tL>0?tR/tL*100:0;
               return[
                 ce('td',{key:ck+'l',style:{borderLeft:'2px solid #BFDBFE'}},tL>0?Nf(tL):'—'),
-                ce('td',{key:ck+'r',style:{color:'#E31837',fontWeight:700}},tR>0?Nf(tR):'—'),
+                ce('td',{key:ck+'r',style:{color:'#EA580C',fontWeight:700}},tR>0?Nf(tR):'—'),
                 ce('td',{key:ck+'l2r',style:{color:'#D97706'}},tL2r>0?Pf(tL2r):'—'),
               ];
             })
@@ -2798,7 +2365,7 @@ const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months,
       rows.push(row);
     }
     rows.push(['∑ Grand Total',summaryAgg.grand.l,summaryAgg.grand.r,100,+summaryAgg.grand.l2r.toFixed(1),...allSrcs.flatMap(s=>{const v=summaryAgg.grandSrc[s]||EMPTY;return[v.l,v.r,+v.l2r.toFixed(1)];})]);
-    exportXlsx({'City × Source':rows},'Hero_CitySource_All');
+    exportXlsx({'City × Source':rows},'TVS_CitySource_All');
   }, [summaryAgg, allSrcs]);
 
   if (!summaryAgg) return ce('div',{style:{textAlign:'center',padding:50,color:'#94A3B8',fontSize:14}},
@@ -2854,7 +2421,7 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
     const gtRow=['∑ Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];
     for (const ck of colKeys) { let tL=0,tR=0; for(const da of Object.values(rowAggs)){const ca=da.colAggs[ck]||{l:0,r:0};tL+=ca.l;tR+=ca.r;} const tL2r=tL>0?tR/tL*100:0; gtRow.push(tL,tR,+tL2r.toFixed(1)); }
     rows.push(gtRow);
-    exportXlsx({[label]:rows},'Hero_StateModel_'+(label==='Summary'?'All':label.replace("'","")));
+    exportXlsx({[label]:rows},'TVS_StateModel_'+(label==='Summary'?'All':label.replace("'","")));
   }, []);
 
   return ce('div', { className:'fade-up' },
@@ -2922,7 +2489,7 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
     const gtRow=['∑ Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];
     for (const ck of colKeys) { let tL=0,tR=0; for(const da of Object.values(rowAggs)){const ca=da.colAggs[ck]||{l:0,r:0};tL+=ca.l;tR+=ca.r;} const tL2r=tL>0?tR/tL*100:0; gtRow.push(tL,tR,+tL2r.toFixed(1)); }
     rows.push(gtRow);
-    exportXlsx({'City × Model':rows},'Hero_CityModel_All');
+    exportXlsx({'City × Model':rows},'TVS_CityModel_All');
   }, [summaryAgg]);
 
   if (cxm.length===0) return ce('div',{style:{textAlign:'center',padding:50,color:'#94A3B8',fontSize:14}},
@@ -2940,16 +2507,223 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
 });
 
 /* ════════════════════════════════════════════════════════════════════
-   APP ROOT
+   APP ROOT — Hero MotoCorp LDR (TVS tab components, Hero data)
    ════════════════════════════════════════════════════════════════════ */
+const TABS = [
+  { id:'overview',    label:'Overview' },
+  { id:'source',      label:'Source Analysis' },
+  { id:'ltxsrc',      label:'LT \u00d7 Source' },
+  { id:'modelxsrc',   label:'Model \u00d7 Source' },
+  { id:'statexsrc',   label:'State \u00d7 Source' },
+  { id:'cityxsrc',    label:'City \u00d7 Source' },
+  { id:'statexmodel', label:'State \u00d7 Model' },
+  { id:'cityxmodel',  label:'City \u00d7 Model' },
+  { id:'dispersion',  label:'Retail Dispersion' },
+  { id:'pivot',       label:'Pivot Table' },
+];
 
-/* ════════════════════════════════════════════════════════════════════
-   HERO FIREBASE AUTH COMPONENTS
-   ════════════════════════════════════════════════════════════════════ */
+function App({fbUser,role,presence,onSignOut,onAdminOpen}){
+  const viewerMode=role==='viewer';
+  const [data,setData]=useState(null);
+  const [syncing,setSyncing]=useState(false);
+  const [syncErr,setSyncErr]=useState(null);
+  const [lastSynced,setLastSynced]=useState(null);
+  const [diagnostics,setDiagnostics]=useState(null);
+  const [diagExpanded,setDiagExpanded]=useState(false);
+  const [tab,setTab]=useState('overview');
+  const [leadsMode,setLeadsMode]=useState('update');
+  const [RT,setRT]=useState('all');
+  const [filters,setFilters]=useState({months:new Set(),leadTypes:new Set(),sources:new Set(),models:new Set(),states:new Set(),cities:new Set()});
+  const [isPending,startT]=useTransition();
+
+  const handleSync=useCallback(async()=>{
+    setSyncing(true);setSyncErr(null);
+    try{
+      const[leadsCSV,retailCSV]=await Promise.all([
+        fetchSheetCsv(HERO_SHEETS_CONFIG.LEADS_URL),
+        fetchSheetCsv(HERO_SHEETS_CONFIG.RETAIL_URL),
+      ]);
+      const leadRaw=parseCsvToRows(leadsCSV);
+      const retailRaw=parseCsvToRows(retailCSV);
+      if(!leadRaw.length)throw new Error('No rows in Leads sheet \u2014 ensure it is shared as Anyone \u2192 Viewer.');
+      const leadResult=parseHeroLeadRows(leadRaw);
+      const retailResult=parseHeroRetailRows(retailRaw);
+      const{rows:joined,diagnostics:diag}=joinHeroData(leadResult,retailResult);
+      if(!joined.length)throw new Error('No rows after join. Check opty_id / sourceLeadId column names.');
+      const payload=buildPayload(joined);
+      setData(payload);
+      setDiagnostics(diag);
+      setLastSynced(new Date());
+    }catch(e){setSyncErr(e.message);}
+    finally{setSyncing(false);}
+  },[]);
+
+  useEffect(()=>{if(HERO_SHEETS_CONFIG.AUTO_SYNC_ON_LOAD)handleSync();},[]);
+
+  const effectiveData=useMemo(()=>{
+    if(!data)return null;
+    if(leadsMode==='create'||!data.u_monthly)return data;
+    return{
+      ...data,
+      monthly:data.u_monthly,sm:data.u_sm,ltm:data.u_ltm,mm:data.u_mm,stm:data.u_stm,
+      mxst:data.u_mxst,cm:data.u_cm||[],csm:data.u_csm||[],cxm:data.u_cxm||[],univ:data.u_univ,
+      mlt:data.u_mlt||[],stlt:data.u_stlt||[],cdm:data.u_cdm||[],cdsm:data.u_cdsm||[],stcm:data.u_stcm||[],
+      disp:data.u_disp||[],
+    };
+  },[data,leadsMode]);
+
+  const months=useMemo(()=>{
+    if(!effectiveData)return[];
+    const allM=[...new Set(effectiveData.maps.lm)].sort((a,b)=>heroMonthOrder(b)-heroMonthOrder(a));
+    if(!filters.months||filters.months.size===0)return allM;
+    if(filters.months===FILTER_CLEARED)return['\x00'];
+    return allM.filter(m=>filters.months.has(m));
+  },[effectiveData,filters.months]);
+
+  const visibleTabs=viewerMode
+    ?TABS.filter(t=>['modelxsrc','statexsrc','cityxsrc','statexmodel','cityxmodel'].includes(t.id))
+    :TABS;
+
+  const tabContent=useMemo(()=>{
+    if(!effectiveData)return null;
+    const props={data:effectiveData,filters,months,RT,viewerMode};
+    switch(tab){
+      case 'overview':    return ce(OverviewTab,   props);
+      case 'source':      return ce(SourceTab,      props);
+      case 'ltxsrc':      return ce(LTSourceTab,    props);
+      case 'modelxsrc':   return ce(ModelSourceTab, props);
+      case 'statexsrc':   return ce(StateSourceTab, props);
+      case 'cityxsrc':    return ce(CitySourceTab,  props);
+      case 'statexmodel': return ce(StateModelTab,  props);
+      case 'cityxmodel':  return ce(CityModelTab,   props);
+      case 'dispersion':  return ce(DispersionTab,  props);
+      case 'pivot':       return ce(PivotTab,       props);
+      default: return null;
+    }
+  },[tab,effectiveData,filters,months,RT,viewerMode]);
+
+  if(!effectiveData)return ce(HeroSyncScreen,{onSync:handleSync,syncing,syncErr});
+
+  return ce('div',{style:{minHeight:'100vh',background:'#f8fafc'}},
+    /* Header */
+    ce('div',{style:{background:'#9A3412',padding:'0 24px',position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 16px rgba(124,45,18,.35)'}},
+      ce('div',{style:{maxWidth:1440,margin:'0 auto',display:'flex',alignItems:'center',gap:16}},
+        ce('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'10px 0',flexShrink:0}},
+          ce('div',{style:{width:34,height:34,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#EA580C',boxShadow:'0 2px 8px rgba(0,0,0,.15)'}},'H'),
+          ce('div',null,
+            ce('div',{style:{fontSize:13,fontWeight:800,color:'#fff',letterSpacing:'-.02em'}},'Hero \u00b7 LDR'),
+            ce('div',{style:{fontSize:9,color:'#FED7AA',letterSpacing:'.07em',fontWeight:600}},'LEAD DISPOSITION DASHBOARD v2.0 \u00b7 BikeDekho')
+          )
+        ),
+        (()=>{
+          let gL=0,gR=0;
+          for(const row of effectiveData.monthly){gL+=row[1];gR+=row[2];}
+          return ce('div',{style:{flex:1,display:'flex',gap:16,overflowX:'auto',padding:'8px 0',borderLeft:'1px solid rgba(255,255,255,.3)',paddingLeft:16,marginLeft:4}},
+            [{l:'Leads',v:gL.toLocaleString('en-IN')},{l:'Bookings',v:gR.toLocaleString('en-IN')},
+             {l:'L2R%',v:gL>0?(gR/gL*100).toFixed(1)+'%':'\u2014'},{l:'Months',v:effectiveData.maps.lm.length}]
+            .map((k,i)=>ce('div',{key:i,style:{flexShrink:0,textAlign:'center',minWidth:56}},
+              ce('div',{style:{fontSize:8,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'#FED7AA'}},k.l),
+              ce('div',{style:{fontSize:13,fontWeight:800,color:'#fff',fontFamily:'DM Mono,monospace',letterSpacing:'-.02em'}},k.v)
+            ))
+          );
+        })(),
+        ce('button',{onClick:handleSync,disabled:syncing,
+          style:{flexShrink:0,padding:'6px 16px',background:syncing?'rgba(255,255,255,.7)':'#fff',border:'none',borderRadius:20,color:'#7C2D12',fontSize:10,cursor:syncing?'default':'pointer',fontFamily:'inherit',fontWeight:700,boxShadow:'0 2px 8px rgba(0,0,0,.12)',display:'flex',alignItems:'center',gap:5}},
+          syncing?ce('span',{style:{display:'inline-block',animation:'spin .8s linear infinite',fontSize:11}},'\u27f3'):'\ud83d\udd04',
+          syncing?'Syncing\u2026':'Sync Sheets'
+        ),
+        ce('div',{style:{display:'flex',borderRadius:20,overflow:'hidden',border:'1px solid rgba(255,255,255,.4)',fontSize:10,fontWeight:700,flexShrink:0}},
+          ce('button',{onClick:()=>setLeadsMode('create'),
+            style:{padding:'4px 10px',background:leadsMode==='create'?'#fff':'transparent',color:leadsMode==='create'?'#7C2D12':'rgba(255,255,255,.85)',border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,whiteSpace:'nowrap'}},'All'),
+          ce('button',{onClick:()=>setLeadsMode('update'),
+            style:{padding:'4px 10px',background:leadsMode==='update'?'#fff':'transparent',color:leadsMode==='update'?'#7C2D12':'rgba(255,255,255,.85)',border:'none',cursor:'pointer',fontFamily:'inherit',fontWeight:700,borderLeft:'1px solid rgba(255,255,255,.3)',whiteSpace:'nowrap'}},'Unique')
+        ),
+        ce('div',{style:{borderLeft:'1px solid rgba(255,255,255,.25)',paddingLeft:10,marginLeft:4,flexShrink:0}},
+          ce(PresenceStrip,{presence,fbUser,role,onSignOut,onAdminOpen})
+        )
+      )
+    ),
+    syncErr&&ce('div',{style:{background:'#fef2f2',borderBottom:'1px solid #fecaca',padding:'5px 24px',display:'flex',alignItems:'center',gap:8}},
+      ce('span',{style:{fontSize:10,color:'#dc2626',flex:1}},'\u26a0 Sync error: '+syncErr),
+      ce('button',{onClick:handleSync,style:{fontSize:10,padding:'3px 10px',borderRadius:8,border:'1px solid #fecaca',background:'#fff',color:'#dc2626',cursor:'pointer',fontFamily:'inherit',fontWeight:600}},'Retry')
+    ),
+    lastSynced&&!syncErr&&ce('div',{style:{background:'#f0fdf4',borderBottom:'1px solid #bbf7d0',padding:'4px 24px',fontSize:10,color:'#166534'}},
+      '\u2713 Synced '+lastSynced.toLocaleString()+(diagnostics?' \u00b7 '+diagnostics.matched.toLocaleString('en-IN')+' bookings matched':'')
+    ),
+    diagnostics&&ce(HeroDiagnostics,{d:diagnostics,visible:diagExpanded,onToggle:()=>setDiagExpanded(p=>!p)}),
+    /* Tab nav */
+    ce('div',{style:{background:'#fff',borderBottom:'2px solid #FED7AA',position:'sticky',top:54,zIndex:99,boxShadow:'0 2px 8px rgba(124,45,18,.08)'}},
+      ce('div',{style:{maxWidth:1440,margin:'0 auto',display:'flex',alignItems:'center',gap:0,padding:'0 24px',opacity:isPending?0.6:1,transition:'opacity .15s'}},
+        visibleTabs.map(t=>ce('button',{key:t.id,className:'tab-pill'+(tab===t.id?' active':''),onClick:()=>startT(()=>setTab(t.id))},t.label)),
+        isPending&&ce('span',{style:{marginLeft:12,fontSize:12,color:'#6B7280'}},'Loading\u2026')
+      )
+    ),
+    /* Filter bar */
+    ce('div',{style:{maxWidth:1440,margin:'0 auto',padding:'14px 24px 0',opacity:isPending?0.6:1,transition:'opacity .15s'}},
+      ce(FilterBar,{data:effectiveData,filters,onFiltersChange:f=>startT(()=>setFilters(f)),RT,setRT,viewerMode})
+    ),
+    /* Tab content */
+    ce('div',{style:{maxWidth:1440,margin:'0 auto',padding:'14px 24px 32px'}},
+      tabContent
+    )
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   FIREBASE — Hero MotoCorp LDR Dashboard
+   Project: re-ldr-dashboard  |  Collection: re_hero_users
+══════════════════════════════════════════════════════════════════════ */
+var FIREBASE_CONFIG={
+  apiKey:'AIzaSyBgqQZ-0-rDhxZQl4ktt433YGzw-MdWT3Y',
+  authDomain:'re-ldr-dashboard.firebaseapp.com',
+  databaseURL:'https://re-ldr-dashboard-default-rtdb.firebaseio.com',
+  projectId:'re-ldr-dashboard',
+  storageBucket:'re-ldr-dashboard.firebasestorage.app',
+  messagingSenderId:'327269038709',
+  appId:'1:327269038709:web:037032749de4cae0b2d63c',
+};
+var ADMIN_EMAILS=['mihir.bhatt@girnarsoft.com','aditya.kumar@girnarsoft.com'];
+var ALLOWED_DOMAINS=['@girnarsoft.com','@girnarcare.com'];
+var USERS_COL='re_hero_users';
+var PRESENCE_PATH='re_hero_presence';
+
+var _fbApp=null;
+function getFirebase(){
+  if(!_fbApp){
+    try{_fbApp=firebase.initializeApp(FIREBASE_CONFIG,'re-hero');}
+    catch(e){_fbApp=firebase.apps.find(function(a){return a.name==='re-hero';})||firebase.app('re-hero');}
+  }
+  return _fbApp;
+}
+function getFbAuth(){return firebase.auth(getFirebase());}
+function getFbDb(){return firebase.firestore(getFirebase());}
+function getFbRTDB(){return firebase.database(getFirebase());}
+
+function isAdminEmail(email){return ADMIN_EMAILS.includes((email||'').toLowerCase());}
+function ensureUserDoc(user){
+  var ref=getFbDb().collection(USERS_COL).doc(user.uid);
+  var isAdmin=isAdminEmail(user.email);
+  return ref.get().then(function(snap){
+    if(!snap.exists){
+      return ref.set({email:user.email,displayName:user.displayName||user.email,photoURL:user.photoURL||'',
+        role:isAdmin?'admin':'pending',createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+    }
+    var updates={};
+    if(snap.data().email!==user.email)Object.assign(updates,{email:user.email,displayName:user.displayName||user.email,photoURL:user.photoURL||''});
+    if(isAdmin&&snap.data().role!=='admin')updates.role='admin';
+    if(Object.keys(updates).length)return ref.update(updates);
+  });
+}
+function setupPresence(user){
+  var presRef=getFbRTDB().ref(PRESENCE_PATH+'/'+user.uid);
+  presRef.set({uid:user.uid,email:user.email,name:user.displayName||user.email,photo:user.photoURL||'',ts:firebase.database.ServerValue.TIMESTAMP});
+  presRef.onDisconnect().remove();
+  return presRef;
+}
 
 function LoginPage({onLogin,loading,error}){
-  return ce('div',{style:{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#7C2D12 0%,#EA580C 100%)'}},
-    ce('div',{style:{background:'#fff',borderRadius:20,padding:'40px 44px',maxWidth:440,width:'90%',boxShadow:'0 24px 60px rgba(0,0,0,.25)'}},
+  return ce('div',{className:'auth-screen'},
+    ce('div',{className:'auth-card'},
       ce('div',{style:{display:'inline-flex',alignItems:'center',gap:12,background:'#9A3412',padding:'12px 24px',borderRadius:12,marginBottom:20,boxShadow:'0 4px 20px rgba(194,65,12,.35)'}},
         ce('div',{style:{width:36,height:36,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:900,color:'#EA580C'}},'H'),
         ce('div',{style:{textAlign:'left'}},
@@ -2960,30 +2734,61 @@ function LoginPage({onLogin,loading,error}){
       ce('h2',{style:{fontSize:18,fontWeight:700,color:'#111827',margin:'0 0 8px'}},'Sign in to access'),
       ce('p',{style:{fontSize:12,color:'#6b7280',margin:'0 0 24px',lineHeight:1.6}},'Use your @girnarsoft.com or @girnarcare.com Google account to continue.'),
       loading
-        ?ce('div',{style:{padding:'18px 0',color:'#6b7280',fontSize:13}},'Signing in…')
-        :ce('button',{style:{width:'100%',padding:12,background:'#EA580C',color:'#fff',border:'none',borderRadius:10,fontSize:13,fontWeight:700,fontFamily:'inherit',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8},onClick:onLogin},
+        ?ce('div',{style:{padding:'18px 0',color:'#6b7280',fontSize:13}},'Signing in\u2026')
+        :ce('button',{className:'auth-btn',onClick:onLogin},
             ce('svg',{xmlns:'http://www.w3.org/2000/svg',viewBox:'0 0 48 48',style:{width:20,height:20,flexShrink:0}},
               ce('path',{fill:'#FFC107',d:'M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z'}),
               ce('path',{fill:'#FF3D00',d:'M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z'}),
               ce('path',{fill:'#4CAF50',d:'M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z'}),
-              ce('path',{fill:'#1976D2',d:'M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z'})
+              ce('path',{fill:'#1976D2',d:'M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z'})
             ),
             'Continue with Google'
           ),
-      error&&ce('div',{style:{marginTop:12,background:'#FEE2E2',border:'1px solid #FECACA',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#B91C1C'}},error)
+      error&&ce('div',{className:'auth-error'},error)
     )
   );
 }
 
 function PendingPage({user,onSignOut}){
-  return ce('div',{style:{position:'fixed',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#7C2D12 0%,#EA580C 100%)'}},
-    ce('div',{style:{background:'#fff',borderRadius:20,padding:'40px 44px',maxWidth:440,width:'90%',boxShadow:'0 24px 60px rgba(0,0,0,.25)',textAlign:'center'}},
-      ce('div',{style:{fontSize:40,marginBottom:12,lineHeight:1}},'⏳'),
+  return ce('div',{className:'auth-screen'},
+    ce('div',{className:'auth-card'},
+      ce('div',{style:{fontSize:40,marginBottom:12,lineHeight:1}},'\u23f3'),
       ce('h2',{style:{fontSize:18,fontWeight:700,color:'#111827',margin:'0 0 8px'}},'Access Pending'),
       ce('p',{style:{fontSize:13,color:'#6b7280',margin:'0 0 4px',lineHeight:1.5}},user.email+' is pending role assignment.'),
       ce('p',{style:{fontSize:12,color:'#9ca3af',margin:'0 0 24px'}},'Contact mihir.bhatt@girnarsoft.com to request access.'),
       ce('button',{onClick:onSignOut,style:{padding:'9px 22px',borderRadius:8,border:'1px solid #d1d5db',background:'#fff',fontSize:13,cursor:'pointer',color:'#374151',fontWeight:600,fontFamily:'inherit'}},'Sign Out')
     )
+  );
+}
+
+function PresenceStrip({presence,fbUser,role,onSignOut,onAdminOpen}){
+  var pArr=Object.values(presence||{});
+  var others=pArr.filter(function(p){return p.uid!==fbUser.uid;});
+  var selfPres=pArr.find(function(p){return p.uid===fbUser.uid;})||{name:fbUser.displayName,photo:fbUser.photoURL,email:fbUser.email,uid:fbUser.uid};
+  var COLORS=['#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2','#ea580c','#0d9488'];
+  function colorFor(uid){return COLORS[((uid||'').charCodeAt(0)+((uid||'').charCodeAt(1)||0))%COLORS.length]||COLORS[0];}
+  function initials(n){return((n||'?').split(' ').map(function(w){return w[0]||'';}).join('').slice(0,2)||'?').toUpperCase();}
+  function Av(p,highlight){
+    return ce('div',{key:p.uid,className:'avatar',style:{background:colorFor(p.uid),border:highlight?'2px solid #FDBA74':'2px solid rgba(255,255,255,.4)'},title:p.name||p.email},
+      ce('div',{className:'avatar-tip'},p.name||p.email),
+      p.photo?ce('img',{src:p.photo,style:{width:'100%',height:'100%',borderRadius:'50%',objectFit:'cover'},alt:''}):initials(p.name||p.email)
+    );
+  }
+  return ce('div',{className:'presence-strip'},
+    others.length>0&&ce('div',{style:{display:'flex',alignItems:'center',gap:2,marginRight:4}},
+      ce('span',{style:{fontSize:8,color:'rgba(255,255,255,.6)',textTransform:'uppercase',letterSpacing:'.07em',marginRight:4}},'Live:'),
+      others.slice(0,6).map(function(p){return Av(p,false);}),
+      others.length>6&&ce('div',{className:'avatar',style:{background:'rgba(255,255,255,.25)',fontSize:9,color:'#fff'}},'+' +(others.length-6))
+    ),
+    Av(selfPres,true),
+    (role==='admin'||role==='full')&&ce('span',{className:'viewer-badge',style:{background:'rgba(255,255,255,.15)',color:'#FED7AA',borderRadius:20,padding:'2px 8px',fontSize:9,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',marginLeft:4}},role==='admin'?'Admin':'Full'),
+    role==='viewer'&&ce('span',{className:'viewer-badge',style:{marginLeft:4}},'Viewer'),
+    role==='admin'&&ce('button',{
+      style:{marginLeft:6,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(255,255,255,.3)',background:'rgba(255,255,255,.12)',fontSize:11,cursor:'pointer',color:'#fff',fontWeight:600,fontFamily:'inherit',whiteSpace:'nowrap'},
+      onClick:onAdminOpen},'\u2699 Admin'),
+    ce('button',{
+      style:{marginLeft:4,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(255,255,255,.3)',background:'rgba(255,255,255,.1)',fontSize:11,cursor:'pointer',color:'rgba(255,255,255,.85)',fontFamily:'inherit',whiteSpace:'nowrap'},
+      onClick:onSignOut},'Sign Out')
   );
 }
 
@@ -3006,11 +2811,17 @@ function AdminPanel({onClose}){
   }
   var roleColor={admin:'#92400e',full:'#15803d',viewer:'#1d4ed8',pending:'#6b7280'};
   var roleBg={admin:'#fef3c7',full:'#dcfce7',viewer:'#dbeafe',pending:'#f3f4f6'};
-  return ce('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999},onClick:function(e){if(e.target===e.currentTarget)onClose();}},
-    ce('div',{style:{background:'#fff',borderRadius:16,padding:28,maxWidth:600,width:'92%',boxShadow:'0 24px 60px rgba(0,0,0,.25)',maxHeight:'80vh',overflowY:'auto'}},
+  return ce('div',{className:'admin-panel-overlay',onClick:function(e){if(e.target===e.currentTarget)onClose();}},
+    ce('div',{className:'admin-card'},
       ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}},
-        ce('span',{style:{fontSize:15,fontWeight:700,color:'#111827'}},'?? User Access Management'),
-        ce('button',{style:{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#9ca3af',lineHeight:1},onClick:onClose},'×')
+        ce('span',{style:{fontSize:15,fontWeight:700,color:'#111827'}},'\ud83d\udc65 User Access Management'),
+        ce('button',{style:{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'#9ca3af',lineHeight:1},onClick:onClose},'\u00d7')
+      ),
+      ce('p',{style:{fontSize:11,color:'#6b7280',margin:'0 0 14px',lineHeight:1.7}},
+        ce('strong',null,'pending'),' \u2014 awaiting access  \u00b7  ',
+        ce('strong',null,'viewer'),' \u2014 totals only  \u00b7  ',
+        ce('strong',null,'full'),' \u2014 all columns  \u00b7  ',
+        ce('strong',null,'admin'),' \u2014 full + manage users'
       ),
       panelErr&&ce('div',{style:{background:'#fef2f2',color:'#dc2626',padding:'8px 12px',borderRadius:8,fontSize:12,marginBottom:12}},panelErr),
       ce('div',{style:{overflowX:'auto'}},
@@ -3022,21 +2833,18 @@ function AdminPanel({onClose}){
           )),
           ce('tbody',null,users.map(function(u){
             return ce('tr',{key:u.id,style:{borderBottom:'1px solid #FFF7ED'}},
-              ce('td',{style:{padding:'7px 10px',color:'#6b7280',fontSize:11}},u.email),
-              ce('td',{style:{padding:'7px 10px',color:'#374151',fontSize:11}},u.displayName||'—'),
+              ce('td',{style:{padding:'7px 10px',color:'#6b7280',fontSize:11,maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},u.email),
+              ce('td',{style:{padding:'7px 10px',color:'#374151',fontSize:11}},u.displayName||'\u2014'),
               ce('td',{style:{padding:'7px 10px'}},
                 ce('span',{style:{padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700,background:roleBg[u.role]||roleBg.pending,color:roleColor[u.role]||roleColor.pending}},u.role||'pending')
               ),
               ce('td',{style:{padding:'7px 10px'}},
                 isAdminEmail(u.email)
-                  ?ce('span',{style:{fontSize:11,color:'#9ca3af'}},'—')
+                  ?ce('span',{style:{fontSize:11,color:'#9ca3af'}},'\u2014')
                   :saving===u.id
-                    ?ce('span',{style:{fontSize:11,color:'#9ca3af'}},'Saving…')
-                    :ce('select',{
-                        value:u.role||'pending',
-                        onChange:function(e){changeRole(u.id,e.target.value);},
-                        style:{fontSize:11,padding:'3px 8px',borderRadius:6,border:'1px solid #d1d5db',cursor:'pointer',background:'#fff',fontFamily:'inherit'}
-                      },
+                    ?ce('span',{style:{fontSize:11,color:'#9ca3af'}},'Saving\u2026')
+                    :ce('select',{value:u.role||'pending',onChange:function(e){changeRole(u.id,e.target.value);},
+                        style:{fontSize:11,padding:'3px 8px',borderRadius:6,border:'1px solid #d1d5db',cursor:'pointer',background:'#fff',fontFamily:'inherit'}},
                       ['pending','viewer','full','admin'].map(function(r){
                         return ce('option',{key:r,value:r},r.charAt(0).toUpperCase()+r.slice(1));
                       })
@@ -3054,15 +2862,17 @@ function AuthGate(){
   var[authState,setAuthState]=useState('loading');
   var[fbUser,setFbUser]=useState(null);
   var[role,setRole]=useState(null);
+  var[presence,setPresence]=useState({});
   var[authErr,setAuthErr]=useState('');
   var[authLoading,setAuthLoading]=useState(false);
+  var[showAdmin,setShowAdmin]=useState(false);
   var cleanups=React.useRef([]);
 
   useEffect(function(){
     var auth=getFbAuth();
     auth.getRedirectResult().catch(function(e){
       if(e.code==='auth/unauthorized-domain'){
-        setAuthErr('Domain not authorized. Admin must add this domain to Firebase Console.');
+        setAuthErr('Domain not authorized. Admin must add this domain to Firebase Console \u2192 Authentication \u2192 Authorized domains.');
       } else if(e.code&&e.code!=='auth/no-auth-event'){
         setAuthErr(e.message);
       }
@@ -3071,7 +2881,7 @@ function AuthGate(){
     var unsubAuth=auth.onAuthStateChanged(function(user){
       cleanups.current.forEach(function(f){try{f();}catch(e){}});
       cleanups.current=[];
-      if(!user){setAuthState('unauth');setFbUser(null);setRole(null);return;}
+      if(!user){setAuthState('unauth');setFbUser(null);setRole(null);setPresence({});return;}
       if(!user.email||!ALLOWED_DOMAINS.some(function(d){return user.email.endsWith(d);})){
         setAuthErr('Only @girnarsoft.com or @girnarcare.com accounts are allowed.');
         auth.signOut();return;
@@ -3079,16 +2889,16 @@ function AuthGate(){
       setFbUser(user);
       setAuthState('pending');
       ensureUserDoc(user).catch(function(e){console.error('[Auth] ensureUserDoc:',e.code||e.message);});
-      setupPresence(user);
+      var presRef=setupPresence(user);
+      cleanups.current.push(function(){try{presRef.remove();}catch(e){}});
       var unsubRole=getFbDb().collection(USERS_COL).doc(user.uid).onSnapshot(
-        function(snap){
-          var r=(snap.data()||{}).role||'pending';
-          setRole(r);
-          setAuthState(r==='pending'?'pending':'authed');
-        },
+        function(snap){var r=(snap.data()||{}).role||'pending';setRole(r);setAuthState(r==='pending'?'pending':'authed');},
         function(e){console.error('[Auth] role watch:',e.code||e.message);}
       );
       cleanups.current.push(unsubRole);
+      var presListenRef=getFbRTDB().ref(PRESENCE_PATH);
+      presListenRef.on('value',function(snap){setPresence(snap.val()||{});});
+      cleanups.current.push(function(){presListenRef.off();});
     });
     return function(){unsubAuth();cleanups.current.forEach(function(f){try{f();}catch(e){}});};
   },[]);
@@ -3105,1373 +2915,16 @@ function AuthGate(){
     getFbAuth().signOut();
   }
 
-  if(authState==='loading')return ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'linear-gradient(135deg,#7C2D12,#EA580C)',color:'#fff',fontSize:13,fontFamily:'DM Mono,monospace'}},'Authenticating…');
+  if(authState==='loading')return ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',color:'#6b7280',fontSize:13,fontFamily:'DM Mono,monospace'}},'Authenticating\u2026');
   if(authState==='unauth')return ce(LoginPage,{onLogin:handleLogin,loading:authLoading,error:authErr});
   if(authState==='pending')return ce(PendingPage,{user:fbUser,onSignOut:handleSignOut});
-
-  return ce(HeroApp,{auth:{email:fbUser.email,name:fbUser.displayName||fbUser.email,role:role},onLogout:handleSignOut,onAdminOpen:null});
-}
-
-const TABS = [
-  { id:'overview',    label:'Overview' },
-  { id:'source',      label:'Source Analysis' },
-  { id:'ltxsrc',      label:'LT × Source' },
-  { id:'modelxsrc',   label:'Model × Source' },
-  { id:'statexsrc',   label:'State × Source' },
-  { id:'cityxsrc',    label:'City × Source' },
-  { id:'statexmodel', label:'State × Model' },
-  { id:'cityxmodel',  label:'City × Model' },
-  { id:'dispersion',  label:'Retail Dispersion' },
-  { id:'pivot',       label:'Pivot Table' },
-];
-
-function HeroApp({ auth, onLogout, onAdminOpen }) {
-  // ── Dashboard state ────────────────────────────────────────────────
-  const [adminView, setAdminView] = useState(false);
-  const [tab, setTab]             = useState(() => auth && auth.role === 'viewer' ? 'modelxsrc' : 'overview');
-  const [data, setData]           = useState(null);
-  const [loading, setLoading]     = useState(false);
-  const [err, setErr]             = useState(null);
-  const [isPending, startT]       = useTransition();
-  const [leadsMode, setLeadsMode] = useState('update');
-  const [RT, setRT]               = useState('all');
-  const [filters, setFilters]     = useState({ months:new Set(), leadTypes:new Set(), sources:new Set(), models:new Set(), states:new Set(), cities:new Set() });
-
-  // ── Data fetching ──────────────────────────────────────────────────
-  const doFetch = useCallback(async () => {
-    setLoading(true); setErr(null);
-    try {
-      const parsed = await fetchData();
-      setData(parsed);
-      try { localStorage.setItem(CACHE_KEY+'_t', parsed.t); } catch(e) {}
-    } catch(e) { setErr(e.message); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { if (auth && (auth.role === 'full' || auth.role === 'viewer' || auth.role === 'admin')) doFetch(); }, [auth && auth.role]);
-
-  // ── Derived data ───────────────────────────────────────────────────
-  const effectiveData = useMemo(() => {
-    if (!data) return null;
-    if (leadsMode === 'create' || !data.u_monthly) return data;
-    return {
-      ...data,
-      monthly: data.u_monthly, sm: data.u_sm, ltm: data.u_ltm,
-      mm: data.u_mm, stm: data.u_stm, zm: data.u_zm, bdm: data.u_bdm,
-      mxst: data.u_mxst, mlt: data.u_mlt, stlt: data.u_stlt, disp: data.u_disp,
-      stcm: data.u_stcm, univ: data.u_univ,
-      stdm: data.u_stdm, mxdl: data.u_mxdl, ltdl: data.u_ltdl,
-      cm: data.u_cm || [], csm: data.u_csm || [], cxm: data.u_cxm || [],
-      cdm: data.u_cdm || [], cdsm: data.u_cdsm || [],
-    };
-  }, [data, leadsMode]);
-
-  const months = useMemo(() => {
-    if (!effectiveData) return [];
-    const allM = [...new Set(effectiveData.maps.lm)].sort((a,b) => monthOrder(b)-monthOrder(a));
-    if (!filters.months || filters.months.size === 0) return allM;
-    if (filters.months === FILTER_CLEARED) return ['\x00'];
-    return allM.filter(m => filters.months.has(m));
-  }, [effectiveData, filters.months]);
-
-  const role       = auth ? auth.role : null;
-  const viewerMode = role === 'viewer';
-  const visibleTabs = viewerMode
-    ? TABS.filter(t => ['modelxsrc','statexsrc','cityxsrc','statexmodel','cityxmodel'].includes(t.id))
-    : TABS;
-
-  const tabContent = useMemo(() => {
-    if (!effectiveData) return null;
-    const props = { data: effectiveData, filters, months, RT, viewerMode };
-    switch (tab) {
-      case 'overview':    return ce(OverviewTab,    props);
-      case 'source':      return ce(SourceTab,       props);
-      case 'ltxsrc':      return ce(LTSourceTab,      props);
-      case 'modelxsrc':   return ce(ModelSourceTab,   props);
-      case 'statexsrc':   return ce(StateSourceTab,   props);
-      case 'cityxsrc':    return ce(CitySourceTab,    props);
-      case 'statexmodel': return ce(StateModelTab,    props);
-      case 'cityxmodel':  return ce(CityModelTab,     props);
-      case 'dispersion':  return ce(DispersionTab,    props);
-      case 'pivot':       return ce(PivotTab,         props);
-      default: return null;
-    }
-  }, [effectiveData, tab, filters, months, RT, viewerMode]);
-
-  // ── Dashboard (full / viewer) ──────────────────────────────────────
-  const syncChip = data && ce('div', {
-    style:{fontSize:10,color:'#64748B',background:'#F0F4FF',padding:'2px 10px',borderRadius:20,fontFamily:'DM Mono'}
-  }, 'Synced: ' + (data.t ? new Date(data.t).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'));
-
-  const userChip = ce('div', { className:'user-chip' },
-    ce('div', { className:'user-avatar' }, auth.email[0].toUpperCase()),
-    ce('span', { className:'user-name' }, auth.name || auth.email),
-    ce('span', { className:'user-role-badge ' + (viewerMode ? 'role-viewer' : 'role-full') },
-      viewerMode ? 'Viewer' : 'Full'),
-  );
-
-  return ce('div', { style:{minHeight:'100vh',background:'#f8fafc'} },
-
-    // ── Header ──
-    ce('div', { style:{background:'#fff',borderBottom:'1px solid #E2E8F0',position:'sticky',top:0,zIndex:100,boxShadow:'0 1px 4px rgba(0,0,0,.06)'} },
-      ce('div', { style:{maxWidth:1440,margin:'0 auto',padding:'0 20px'} },
-        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid #F1F5F9'} },
-          ce('div', { style:{display:'flex',alignItems:'center',gap:12} },
-            ce('div', { style:{display:'flex',alignItems:'center',gap:8} },
-              ce('div', { style:{width:36,height:36,borderRadius:10,background:'linear-gradient(135deg,#C2410C,#EA580C)',display:'flex',alignItems:'center',justifyContent:'center'} },
-                ce('span', { style:{fontSize:14,fontWeight:900,color:'#EA580C',fontFamily:'DM Mono,monospace',letterSpacing:'-.04em'} }, 'H')
-              ),
-              ce('div', null,
-                ce('div', { style:{fontSize:13,fontWeight:800,color:'#0f172a',letterSpacing:'-.03em',lineHeight:1.1} }, 'Hero MotoCorp'),
-                ce('div', { style:{fontSize:10,color:'#EA580C',fontWeight:600} }, 'Lead Disposition Dashboard'),
-              )
-            ),
-            ce('div', { style:{width:1,height:28,background:'#E2E8F0'} }),
-            syncChip,
-          ),
-          ce('div', { style:{display:'flex',gap:8,alignItems:'center'} },
-            ce('div', { style:{display:'flex',alignItems:'center',background:'#F1F5F9',borderRadius:20,padding:'2px',border:'1px solid #E2E8F0',gap:2} },
-              ce('button', {
-                onClick:()=>setLeadsMode('create'),
-                style:{padding:'4px 12px',fontSize:10,fontWeight:700,fontFamily:'inherit',border:'none',borderRadius:18,cursor:'pointer',transition:'all 120ms',
-                  background:leadsMode==='create'?'#EA580C':'transparent',color:leadsMode==='create'?'#fff':'#64748B'}
-              }, 'On Create'),
-              ce('button', {
-                onClick:()=>setLeadsMode('update'),
-                style:{padding:'4px 12px',fontSize:10,fontWeight:700,fontFamily:'inherit',border:'none',borderRadius:18,cursor:'pointer',transition:'all 120ms',
-                  background:leadsMode==='update'?'#EA580C':'transparent',color:leadsMode==='update'?'#fff':'#64748B'}
-              }, 'On Update'),
-            ),
-            loading && ce('div', { className:'spinner' }),
-            ce('button', { className:'btn btn-secondary', style:{fontSize:11}, onClick:doFetch }, '⟳ Refresh'),
-            role === 'admin' && ce('button', { className:'btn btn-secondary', style:{fontSize:11}, onClick:() => setAdminView(true) }, '⚙ Admin Panel'),
-            userChip,
-            ce('button', { className:'btn-ghost', style:{fontSize:11,color:'#64748B'}, onClick:onLogout }, 'Sign Out'),
-          )
-        ),
-        ce('div', { style:{display:'flex',overflowX:'auto',gap:0} },
-          visibleTabs.map(t => ce('button', {
-            key: t.id,
-            className: 'tab-pill' + (tab === t.id ? ' active' : ''),
-            onClick: () => startT(() => setTab(t.id))
-          }, t.label))
-        )
-      )
-    ),
-
-    // ── Main ──
-    ce('div', { style:{maxWidth:1440,margin:'0 auto',padding:'20px'} },
-      err && ce('div', { className:'err-box', style:{marginBottom:14} }, '⚠ ' + err),
-      !effectiveData && !loading && ce('div', { style:{textAlign:'center',padding:60,color:'#94A3B8',fontSize:14} },
-        ce('div', { style:{fontSize:32,marginBottom:12} }, '📂'),
-        'No data loaded. ',
-        ce('button', { onClick:doFetch, style:{color:'#E31837',textDecoration:'underline',background:'none',border:'none',cursor:'pointer',fontSize:'inherit'} }, 'Click to fetch'),
-      ),
-      loading && !effectiveData && ce('div', { style:{textAlign:'center',padding:60} },
-        ce('div', { className:'spinner', style:{width:36,height:36,borderWidth:3,margin:'0 auto 16px'} }),
-        ce('div', { style:{color:'#64748B',fontSize:13} }, 'Fetching data from Hero Google Sheets…')
-      ),
-      effectiveData && ce('div', null,
-        ce(FilterBar, { data:effectiveData, filters, onFiltersChange:f=>startT(()=>setFilters(f)), RT, setRT, viewerMode }),
-        filters.cities && filters.cities.size > 0 && (tab === 'lt' || tab === 'model') && ce('div', {
-          style:{fontSize:10,color:'#92400E',background:'#FFF3CD',border:'1px solid #F5A623',borderRadius:8,padding:'5px 12px',marginBottom:8}
-        }, '⚠ City filter is active — this tab does not support city filtering (no city-level matrix for this breakdown).'),
-        isPending && ce('div', { style:{textAlign:'center',padding:8,color:'#94A3B8',fontSize:11} }, 'Filtering…'),
-        tabContent
-      )
-    )
+  return ce(React.Fragment,null,
+    showAdmin&&ce(AdminPanel,{onClose:function(){setShowAdmin(false);}}),
+    ce(App,{fbUser:fbUser,role:role,presence:presence,onSignOut:handleSignOut,onAdminOpen:function(){setShowAdmin(true);}})
   );
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   RETAIL DISPERSION TAB
-   ════════════════════════════════════════════════════════════════════ */
-const DispersionTab = React.memo(function DispersionTab({ data, filters, months, RT }) {
-  const { maps, disp } = data;
-
-  // group by retail-attribution month → enquired_model_idx → purchased_model_idx → count
-  const byMonth = useMemo(() => {
-    const rows = disp || [];
-    const allM   = !filters.months || filters.months.size === 0;
-    const allMdl = !filters.models || filters.models.size === 0;
-    const allSt  = !filters.states || filters.states.size === 0;
-
-    const map = new Map(); // month → Map(ei → Map(pi → count))
-    for (const row of rows) {
-      const ei = row[0], pi = row[1], lmi = row[2], cnt = row[3];
-      const m   = maps.lm[lmi];
-      const mdl = maps.mdl[ei];
-      if (!allM   && !filters.months.has(m))   continue;
-      if (!allMdl && !filters.models.has(mdl)) continue;
-      // state filter doesn't apply here (no state dim in disp)
-      if (!map.has(m)) map.set(m, new Map());
-      const mMap = map.get(m);
-      if (!mMap.has(ei)) mMap.set(ei, new Map());
-      const eMap = mMap.get(ei);
-      eMap.set(pi, (eMap.get(pi) || 0) + cnt);
-    }
-    return map;
-  }, [disp, maps, filters]);
-
-  const sortedMonths = useMemo(() =>
-    [...byMonth.keys()].sort((a,b) => monthOrder(b) - monthOrder(a)),
-  [byMonth]);
-
-  const crossMonthTotals = useMemo(() => {
-    let same=0, cross=0;
-    for (const [,mMap] of byMonth) {
-      for (const [ei, piMap] of mMap) {
-        for (const [pi, cnt] of piMap) {
-          if (maps.mdl[pi] === maps.mdl[ei]) same += cnt; else cross += cnt;
-        }
-      }
-    }
-    const total = same + cross;
-    return { same, cross, total, disp: total > 0 ? cross/total*100 : 0 };
-  }, [byMonth, maps]);
-
-  if (!disp || disp.length === 0) return ce('div', {
-    style:{textAlign:'center',padding:60,color:'#94A3B8',fontSize:14}
-  }, ce('div',{style:{fontSize:32,marginBottom:12}},'📊'), 'Dispersion data will appear after the next pipeline run.');
-
-  const DISP_BAR = (pct) => {
-    const w = Math.min(100, pct);
-    const col = pct >= 80 ? '#DC2626' : pct >= 60 ? '#E31837' : pct >= 40 ? '#F97316' : '#F5A623';
-    return ce('div', { style:{display:'flex',alignItems:'center',gap:6} },
-      ce('div', { style:{flex:'0 0 80px',height:8,borderRadius:4,background:'#F1F5F9',overflow:'hidden'} },
-        ce('div', { style:{width:w+'%',height:'100%',background:col,borderRadius:4,transition:'width 300ms'} })
-      ),
-      ce('span', { style:{fontSize:11,fontWeight:700,color:col,minWidth:36} }, pct.toFixed(0)+'%')
-    );
-  };
-
-  const renderMonthGrid = (M) => {
-    const mMap = byMonth.get(M);
-    if (!mMap) return null;
-
-    // ── Summary rows ────────────────────────────────────────────────
-    const tableRows = [];
-    for (const [ei, piMap] of mMap.entries()) {
-      const enquiredMdl = maps.mdl[ei];
-      let same = 0, cross = 0;
-      for (const [pi, cnt] of piMap.entries()) {
-        if (maps.mdl[pi] === enquiredMdl) same += cnt; else cross += cnt;
-      }
-      const total = same + cross;
-      if (total === 0) continue;
-      tableRows.push({ ei, enquiredMdl, same, cross, total, disp: cross / total * 100 });
-    }
-    tableRows.sort((a,b) => b.total - a.total);
-
-    const totSame  = tableRows.reduce((s,r) => s+r.same,  0);
-    const totCross = tableRows.reduce((s,r) => s+r.cross, 0);
-    const totTotal = totSame + totCross;
-    const totDisp  = totTotal > 0 ? totCross / totTotal * 100 : 0;
-
-    // ── Cross-sell matrix ───────────────────────────────────────────
-    const allPiSet = new Set();
-    for (const pm of mMap.values()) for (const pi of pm.keys()) allPiSet.add(pi);
-    // Find the index of "Unknown" so we can pin it last
-    const unknownPi = [...allPiSet].find(pi => maps.mdl[pi] === 'Unknown');
-    // X-axis (purchased): sort by column total desc, Unknown pinned to far right
-    const sortedPi = [...allPiSet]
-      .filter(pi => pi !== unknownPi)
-      .sort((a,b) => {
-        let ta=0, tb=0;
-        for (const pm of mMap.values()) { ta+=pm.get(a)||0; tb+=pm.get(b)||0; }
-        return tb-ta;
-      });
-    if (unknownPi !== undefined) sortedPi.push(unknownPi); // append Unknown last
-    // Y-axis (enquired): same order as summary table
-    const sortedEi = tableRows.map(r => r.ei);
-    let maxCell = 1;
-    for (const pm of mMap.values()) for (const [,c] of pm) if (c>maxCell) maxCell=c;
-
-    const exportData = () => {
-      const sum = [['Enquired Model','Same','Cross','Total','Dispersion%']];
-      for (const r of tableRows) sum.push([r.enquiredMdl, r.same, r.cross, r.total, +r.disp.toFixed(1)]);
-      sum.push(['∑ Total', totSame, totCross, totTotal, +totDisp.toFixed(1)]);
-      const mat = [['Enquired ↓ / Purchased →', ...sortedPi.map(pi=>maps.mdl[pi])]];
-      for (const ei of sortedEi) {
-        const pm = mMap.get(ei);
-        mat.push([maps.mdl[ei], ...sortedPi.map(pi => pm?.get(pi)||0)]);
-      }
-      exportXlsx({ [M+' Summary']: sum, [M+' Matrix']: mat }, 'Hero_Dispersion_'+M.replace("'",""));
-    };
-
-    const thRotate = { writingMode:'vertical-rl', transform:'rotate(180deg)',
-      padding:'10px 5px', fontSize:10, fontWeight:600, color:'#334155',
-      whiteSpace:'nowrap', minWidth:34, textAlign:'left', verticalAlign:'bottom',
-      background:'#F8FAFC', borderBottom:'2px solid #E2E8F0' };
-
-    return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
-      // ── Header ──
-      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8} },
-        ce('div', { style:{display:'flex',alignItems:'center',gap:10} },
-          ce('div', { className:'section-title', style:{marginBottom:0} }, M),
-          ce('span', { style:{fontSize:11,color:'#64748B',fontWeight:500} },
-            Nf(totTotal)+' retails · '+totDisp.toFixed(1)+'% cross-sell')
-        ),
-        ce(ExportBtn, { onClick: exportData })
-      ),
-      // ── Summary table ──
-      ce('div', { className:'scroll-x' },
-        ce('table', null,
-          ce('thead', null, ce('tr', null,
-            ce('th', { className:'left', style:{minWidth:170} }, 'ENQUIRED MODEL'),
-            ce('th', { style:{color:'#059669'} }, 'SAME ✓'),
-            ce('th', { style:{color:'#E31837'} }, 'CROSS ✗'),
-            ce('th', null, 'TOTAL'),
-            ce('th', { style:{minWidth:150} }, 'DISPERSION%'),
-          )),
-          ce('tbody', null,
-            ...tableRows.map((r,i) => ce('tr', { key:i },
-              ce('td', { className:'label' }, r.enquiredMdl),
-              ce('td', { style:{color:'#059669',fontWeight:700} }, Nf(r.same)),
-              ce('td', { style:{color:'#E31837',fontWeight:700} }, Nf(r.cross)),
-              ce('td', null, Nf(r.total)),
-              ce('td', null, DISP_BAR(r.disp)),
-            )),
-            ce('tr', { className:'total-row' },
-              ce('td', { className:'label' }, '∑ Grand Total'),
-              ce('td', { style:{color:'#059669',fontWeight:700} }, Nf(totSame)),
-              ce('td', { style:{color:'#E31837',fontWeight:700} }, Nf(totCross)),
-              ce('td', null, Nf(totTotal)),
-              ce('td', null, DISP_BAR(totDisp)),
-            )
-          )
-        )
-      ),
-      // ── Cross-sell matrix ──
-      ce('div', { style:{marginTop:20, borderTop:'1px solid #F1F5F9', paddingTop:14} },
-        ce('div', { className:'section-title', style:{marginBottom:10} },
-          '🔀 Cross-Sell Matrix — Enquired (↓) × Purchased (→)'),
-        ce('div', { style:{display:'flex',alignItems:'center',gap:16,marginBottom:10,flexWrap:'wrap'} },
-          ce('span', { style:{fontSize:11,color:'#64748B'} },
-            '🟢 Diagonal = same model sold  ·  🔴 Off-diagonal = cross-sell, darker = higher volume'),
-          unknownPi !== undefined && ce('span', { style:{fontSize:11,color:'#94A3B8',borderLeft:'1px solid #E2E8F0',paddingLeft:16} },
-            '⚠️ "Unknown" (far right) = retails where purchasedModel is blank in the retail master')
-        ),
-        ce('div', { className:'scroll-x' },
-          ce('table', { style:{borderCollapse:'collapse', fontSize:11} },
-            ce('thead', null,
-              ce('tr', null,
-                ce('th', { style:{ padding:'4px 10px', background:'#1a3a5c', color:'#fff',
-                                   fontWeight:700, textAlign:'left', minWidth:160, maxWidth:160,
-                                   position:'sticky', left:0, zIndex:2,
-                                   borderRight:'2px solid #E2E8F0',
-                                   verticalAlign:'bottom', borderBottom:'2px solid #E2E8F0' }},
-                  'Enquired ↓  /  Purchased →'),
-                ...sortedPi.map(pi => {
-                  const isUnk = pi === unknownPi;
-                  return ce('th', { key:pi, style:{
-                    ...thRotate,
-                    color: isUnk ? '#94A3B8' : '#334155',
-                    background: isUnk ? '#F8F8F8' : '#F8FAFC',
-                    borderLeft: isUnk ? '2px dashed #E2E8F0' : undefined,
-                  }}, maps.mdl[pi]);
-                })
-              )
-            ),
-            ce('tbody', null,
-              sortedEi.map(ei => {
-                const pm = mMap.get(ei);
-                return ce('tr', { key:ei },
-                  ce('td', { style:{ padding:'5px 10px', fontWeight:600, color:'#1E293B', fontSize:12,
-                                     background:'#F8FAFC', position:'sticky', left:0, zIndex:1,
-                                     borderRight:'2px solid #E2E8F0', borderBottom:'1px solid #F1F5F9',
-                                     whiteSpace:'nowrap' }}, maps.mdl[ei]),
-                  ...sortedPi.map(pi => {
-                    const cnt = pm?.get(pi) || 0;
-                    const isSame  = ei === pi;
-                    const isUnk   = pi === unknownPi;
-                    const intensity = cnt / maxCell;
-                    let bg, color;
-                    if (isUnk) {
-                      bg    = cnt > 0 ? `rgba(148,163,184,${0.1 + intensity*0.7})` : '#FAFAFA';
-                      color = intensity > 0.5 ? '#fff' : (cnt > 0 ? '#475569' : '#CBD5E1');
-                    } else if (isSame) {
-                      bg    = cnt > 0 ? `rgba(5,150,105,${0.12 + intensity*0.78})` : '#F0FDF4';
-                      color = intensity > 0.4 ? '#fff' : '#065F46';
-                    } else {
-                      bg    = cnt > 0 ? `rgba(220,38,38,${0.07 + intensity*0.78})` : '#FAFAFA';
-                      color = intensity > 0.4 ? '#fff' : (cnt > 0 ? '#7F1D1D' : '#CBD5E1');
-                    }
-                    return ce('td', { key:pi,
-                      style:{ padding:'5px 8px', textAlign:'right',
-                              fontWeight: cnt > 0 ? 700 : 400,
-                              background: bg, color: color,
-                              borderBottom:'1px solid #F1F5F9',
-                              borderLeft: isUnk ? '2px dashed #E2E8F0'
-                                        : isSame ? '1px solid rgba(5,150,105,0.25)'
-                                        : '1px solid #F1F5F9',
-                              minWidth:42, fontSize:11 }
-                    }, cnt > 0 ? Nf(cnt) : '—');
-                  })
-                );
-              })
-            )
-          )
-        )
-      )
-    );
-  };
-
-  // Build aggregated per-model dispersion for the summary table
-  const dispSummaryRows = useMemo(() => {
-    const modelAcc = new Map(); // mdl name → { same, cross }
-    for (const [,mMap] of byMonth) {
-      for (const [ei, piMap] of mMap) {
-        const eMdl = maps.mdl[ei];
-        if (!modelAcc.has(eMdl)) modelAcc.set(eMdl, { same:0, cross:0 });
-        const e = modelAcc.get(eMdl);
-        for (const [pi, cnt] of piMap) {
-          if (maps.mdl[pi] === eMdl) e.same+=cnt; else e.cross+=cnt;
-        }
-      }
-    }
-    return [...modelAcc.entries()]
-      .map(([m, e]) => ({ m, same:e.same, cross:e.cross, total:e.same+e.cross, disp:e.same+e.cross>0?e.cross/(e.same+e.cross)*100:0 }))
-      .sort((a,b)=>b.total-a.total);
-  }, [byMonth, maps]);
-
-  return ce('div', { className:'fade-up' },
-    ce('div', { style:{fontSize:12,color:'#64748B',marginBottom:14,padding:'8px 12px',background:'#F8FAFC',borderRadius:8,border:'1px solid #E2E8F0'} },
-      '📌 Retail Attribution leads only. Shows % of customers who purchased a different model than enquired. Month & Model filters apply.'
-    ),
-    crossMonthTotals.total > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #E31837'} },
-      ce('div', { className:'section-title', style:{marginBottom:10} }, '∑ All Months — Dispersion Summary'),
-      ce('div', { className:'scroll-x' },
-        ce('table', null,
-          ce('thead', null, ce('tr', null,
-            ce('th',{className:'left',style:{minWidth:170}},'Enquired Model'),
-            ce('th',{style:{color:'#059669'}},'Same ✓'),
-            ce('th',{style:{color:'#E31837'}},'Cross ✗'),
-            ce('th',null,'Total'),
-            ce('th',{style:{minWidth:150}},'Dispersion%'),
-          )),
-          ce('tbody', null,
-            ...dispSummaryRows.map((r,i) => ce('tr',{key:i},
-              ce('td',{className:'label'},r.m),
-              ce('td',{style:{color:'#059669',fontWeight:700}},Nf(r.same)),
-              ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(r.cross)),
-              ce('td',null,Nf(r.total)),
-              ce('td',null,DISP_BAR(r.disp)),
-            )),
-            ce('tr',{className:'total-row'},
-              ce('td',{className:'label'},'∑ Grand Total'),
-              ce('td',{style:{color:'#059669',fontWeight:700}},Nf(crossMonthTotals.same)),
-              ce('td',{style:{color:'#E31837',fontWeight:700}},Nf(crossMonthTotals.cross)),
-              ce('td',null,Nf(crossMonthTotals.total)),
-              ce('td',null,DISP_BAR(crossMonthTotals.disp)),
-            )
-          )
-        )
-      )
-    ),
-    ...sortedMonths.map(M => renderMonthGrid(M))
-  );
-});
-
-/* ════════════════════════════════════════════════════════════════════
-   PIVOT TABLE TAB
-   ════════════════════════════════════════════════════════════════════ */
-const COL_SEP = '\x00'; // null-char composite column key separator
-
-const PivotTab = React.memo(function PivotTab({ data, filters, months, RT }) {
-  const { maps } = data;
-
-  const [rowDims,    setRowDims]    = useState(['mdl']);
-  const [colDims,    setColDims]    = useState(['lm']);
-  const [metrics,    setMetrics]    = useState(['leads']);
-  const [sortBy,     setSortBy]     = useState('__total__');
-  const [sortDir,    setSortDir]    = useState('desc');
-  const [topN,       setTopN]       = useState(20);
-  const [collapsed,  setCollapsed]  = useState(new Set());
-  const [addRowOpen, setAddRowOpen] = useState(false);
-  const [addColOpen, setAddColOpen] = useState(false);
-
-  const DIMS = useMemo(() => [
-    { key:'lm',  label:'Month'     },
-    { key:'mdl', label:'Model'     },
-    { key:'src', label:'Source'    },
-    { key:'st',  label:'State'     },
-    { key:'lt',  label:'Lead Type' },
-    { key:'city',label:'City'      },
-    ...(maps.dl ? [{ key:'dl', label:'Dealer' }] : []),
-  ], [maps.dl]);
-
-  const METRICS = [
-    { key:'leads',  label:'Leads'     },
-    { key:'ret',    label:'Retails'   },
-    { key:'retpct', label:'Retail %'  },
-    { key:'dms',    label:'DMS'       },
-    { key:'call',   label:'Call-Out'  },
-  ];
-
-  const ALL_MATS = [
-    { key:'sm',   dims:['src','lm']             },
-    { key:'mm',   dims:['mdl','src','lm']        },
-    { key:'stm',  dims:['st','src','lm']         },
-    { key:'ltm',  dims:['lt','src','lm']         },
-    { key:'mxst', dims:['mdl','st','lm']         },
-    { key:'mlt',  dims:['mdl','lt','lm']         },
-    { key:'stlt', dims:['st','lt','lm']          },
-    { key:'cm',   dims:['city','lm']             },
-    { key:'csm',  dims:['city','src','lm']       },
-    { key:'cxm',  dims:['city','mdl','lm']       },
-    { key:'cdm',  dims:['city','dl','lm']        },
-    { key:'cdsm', dims:['city','dl','src','lm']  },
-    { key:'stcm', dims:['st','city','lm']        },
-    { key:'univ', dims:['mdl','src','st','lt','lm'] },
-    { key:'stdm', dims:['st','dl','lm']          },
-    { key:'mxdl', dims:['mdl','dl','lm']         },
-    { key:'ltdl', dims:['lt','dl','lm']          },
-  ];
-
-  const matConfig = useMemo(() => {
-    const needed = [...rowDims, ...colDims];
-    if (new Set(needed).size < needed.length) return null; // any dim repeated
-    // Include active filter dims so the selected matrix can honour them
-    const filterDims = [];
-    if (filters.models    && filters.models.size    > 0) filterDims.push('mdl');
-    if (filters.states    && filters.states.size    > 0) filterDims.push('st');
-    if (filters.leadTypes && filters.leadTypes.size > 0) filterDims.push('lt');
-    if (filters.cities    && filters.cities.size    > 0) filterDims.push('city');
-    const allNeeded = [...new Set([...needed, ...filterDims])];
-    let best = null, bestExtra = 99;
-    for (const m of ALL_MATS) {
-      if (!allNeeded.every(d => m.dims.includes(d))) continue;
-      const extra = m.dims.filter(d => !needed.includes(d) && d !== 'lm').length;
-      if (extra < bestExtra || (extra === bestExtra && m.dims.length < (best?.dims.length ?? 99))) {
-        bestExtra = extra; best = m;
-      }
-    }
-    return best;
-  }, [rowDims, colDims, filters]);
-
-  const rawMatrix = useMemo(() => {
-    if (!matConfig) return [];
-    return data[matConfig.key] || [];
-  }, [data, matConfig]);
-
-  const filterSets = useMemo(() => {
-    if (!matConfig) return {};
-    const { dims } = matConfig;
-    const mk = (dim, fSet, arr) => {
-      if (!dims.includes(dim) || !fSet || fSet.size === 0) return null;
-      const s = new Set();
-      (arr || []).forEach((v, i) => { if (fSet.has(v)) s.add(i); });
-      return s.size ? s : null;
-    };
-    const sets = {};
-    const a = mk('lm',  filters.months,    maps.lm);  if (a) sets.lm  = a;
-    const b = mk('src', filters.sources,   maps.src); if (b) sets.src = b;
-    const c = mk('st',  filters.states,    maps.st);  if (c) sets.st  = c;
-    const d = mk('mdl', filters.models,    maps.mdl); if (d) sets.mdl = d;
-    const e = mk('lt',  filters.leadTypes, maps.lt);  if (e) sets.lt  = e;
-    if (dims.includes('city') && filters.cities?.size > 0) {
-      const cs = new Set();
-      (maps.city || []).forEach((v, i) => { if (filters.cities.has(v)) cs.add(i); });
-      if (cs.size) sets.city = cs;
-    }
-    return sets;
-  }, [matConfig, filters, maps]);
-
-  function getMetricVal(vals, m) {
-    if (!vals) return 0;
-    if (m === 'leads')  return vals[0] || 0;
-    if (m === 'ret')    return vals[1] || 0;
-    if (m === 'retpct') return vals[0] > 0 ? (vals[1] / vals[0]) * 100 : 0;
-    if (m === 'dms')    return vals[2] || 0;
-    if (m === 'call')   return vals[3] || 0;
-    return 0;
-  }
-
-  function fmtV(vals, m) {
-    const v = getMetricVal(vals, m);
-    if (m === 'retpct') return v > 0 ? v.toFixed(1) + '%' : '—';
-    return v === 0 ? '—' : v.toLocaleString();
-  }
-
-  function rowTotal(cMap, m) {
-    let tl = 0, tr = 0;
-    for (const v of cMap.values()) { tl += v[0]; tr += v[1]; }
-    if (m === 'retpct') return tl > 0 ? (tr / tl) * 100 : 0;
-    let t = 0;
-    for (const v of cMap.values()) t += getMetricVal(v, m);
-    return t;
-  }
-
-  function fmtTotal(cMap, m) {
-    const v = rowTotal(cMap, m);
-    if (m === 'retpct') return v > 0 ? v.toFixed(1) + '%' : '—';
-    return v === 0 ? '—' : v.toLocaleString();
-  }
-
-  function accVals(tgt, cKey, row, nDims) {
-    if (!tgt.has(cKey)) tgt.set(cKey, [0, 0, 0, 0]);
-    const c = tgt.get(cKey);
-    c[0] += row[nDims]     || 0;
-    c[1] += row[nDims + 1] || 0;
-    c[2] += row[nDims + 2] || 0;
-    c[3] += row[nDims + 3] || 0;
-  }
-
-  // tbl: Map<r1Label, { sub: Map<cKey,vals>, children: Map<r2Label, Map<cKey,vals>> }>
-  // cKey is colDims[0] label when 1 col dim, or "c0\x00c1" when 2 col dims
-  const pivotResult = useMemo(() => {
-    if (!matConfig || rawMatrix.length === 0) return null;
-    const { dims } = matConfig;
-    const nDims = dims.length;
-    const rPos0 = dims.indexOf(rowDims[0]);
-    const rPos1 = rowDims[1] ? dims.indexOf(rowDims[1]) : -1;
-    const cPos0 = dims.indexOf(colDims[0]);
-    const cPos1 = colDims[1] ? dims.indexOf(colDims[1]) : -1;
-    const lbl   = (dim, idx) => (maps[dim] || [])[idx] ?? '#' + idx;
-
-    const tbl    = new Map();
-    const colSet = new Set();
-
-    for (const row of rawMatrix) {
-      let ok = true;
-      for (const [dim, allowed] of Object.entries(filterSets)) {
-        const pos = dims.indexOf(dim);
-        if (pos < 0) continue;
-        if (!allowed.has(row[pos])) { ok = false; break; }
-      }
-      if (!ok) continue;
-
-      const r1 = lbl(rowDims[0], row[rPos0]);
-      const r2 = rPos1 >= 0 ? lbl(rowDims[1], row[rPos1]) : null;
-      const c0 = lbl(colDims[0], row[cPos0]);
-      const ck = cPos1 >= 0 ? c0 + COL_SEP + lbl(colDims[1], row[cPos1]) : c0;
-      colSet.add(ck);
-
-      if (!tbl.has(r1)) tbl.set(r1, { sub: new Map(), children: new Map() });
-      const e = tbl.get(r1);
-      accVals(e.sub, ck, row, nDims);
-      if (r2 !== null) {
-        if (!e.children.has(r2)) e.children.set(r2, new Map());
-        accVals(e.children.get(r2), ck, row, nDims);
-      }
-    }
-    return { tbl, colLabels: [...colSet] };
-  }, [rawMatrix, matConfig, rowDims, colDims, filterSets, maps]);
-
-  const pm = metrics[0] || 'leads'; // primary metric drives column ordering + sorting
-
-  const orderedCols = useMemo(() => {
-    if (!pivotResult) return [];
-    const { tbl, colLabels } = pivotResult;
-
-    if (colDims.length === 1) {
-      if (colDims[0] === 'lm') return [...colLabels].sort((a, b) => monthOrder(a) - monthOrder(b));
-      const cTot = {};
-      for (const { sub } of tbl.values())
-        for (const [c, v] of sub) cTot[c] = (cTot[c] || 0) + getMetricVal(v, pm);
-      return [...colLabels].sort((a, b) => (cTot[b] || 0) - (cTot[a] || 0));
-    }
-
-    // 2 col dims: group composites by c0, sort c0s, then sort c1s within each c0 group
-    const groups = new Map(); // c0 → Set<c1>
-    for (const ck of colLabels) {
-      const sep = ck.indexOf(COL_SEP);
-      const c0 = ck.slice(0, sep), c1 = ck.slice(sep + 1);
-      if (!groups.has(c0)) groups.set(c0, new Set());
-      groups.get(c0).add(c1);
-    }
-    // sort c0
-    let c0vals = [...groups.keys()];
-    if (colDims[0] === 'lm') {
-      c0vals.sort((a, b) => monthOrder(a) - monthOrder(b));
-    } else {
-      const c0Tot = {};
-      for (const { sub } of tbl.values())
-        for (const [ck, v] of sub) {
-          const c0 = ck.slice(0, ck.indexOf(COL_SEP));
-          c0Tot[c0] = (c0Tot[c0] || 0) + getMetricVal(v, pm);
-        }
-      c0vals.sort((a, b) => (c0Tot[b] || 0) - (c0Tot[a] || 0));
-    }
-    // sort c1 within each c0 group
-    const result = [];
-    for (const c0 of c0vals) {
-      let c1vals = [...groups.get(c0)];
-      if (colDims[1] === 'lm') {
-        c1vals.sort((a, b) => monthOrder(a) - monthOrder(b));
-      } else {
-        const c1Tot = {};
-        for (const { sub } of tbl.values())
-          for (const [ck, v] of sub) {
-            const sep = ck.indexOf(COL_SEP);
-            if (ck.slice(0, sep) === c0) {
-              const c1 = ck.slice(sep + 1);
-              c1Tot[c1] = (c1Tot[c1] || 0) + getMetricVal(v, pm);
-            }
-          }
-        c1vals.sort((a, b) => (c1Tot[b] || 0) - (c1Tot[a] || 0));
-      }
-      for (const c1 of c1vals) result.push(c0 + COL_SEP + c1);
-    }
-    return result;
-  }, [pivotResult, colDims, pm]);
-
-  // Outer column groups for 2-col-dim header row
-  const colGroups = useMemo(() => {
-    if (colDims.length < 2) return [];
-    const groups = [];
-    let i = 0;
-    while (i < orderedCols.length) {
-      const c0 = orderedCols[i].slice(0, orderedCols[i].indexOf(COL_SEP));
-      let span = 0;
-      while (i < orderedCols.length && orderedCols[i].slice(0, orderedCols[i].indexOf(COL_SEP)) === c0) { span++; i++; }
-      groups.push({ c0, span });
-    }
-    return groups;
-  }, [orderedCols, colDims]);
-
-  const sortedRows = useMemo(() => {
-    if (!pivotResult) return [];
-    const rows = [];
-    for (const [label, entry] of pivotResult.tbl) {
-      const total = rowTotal(entry.sub, pm);
-      rows.push({ label, entry, total });
-    }
-    rows.sort((a, b) => {
-      let av, bv;
-      if (sortBy === '__total__') { av = a.total; bv = b.total; }
-      else if (sortBy === '__label__') { av = a.label; bv = b.label; }
-      else { av = getMetricVal(a.entry.sub.get(sortBy), pm); bv = getMetricVal(b.entry.sub.get(sortBy), pm); }
-      if (av === bv) return 0;
-      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-      return sortDir === 'asc' ? av - bv : bv - av;
-    });
-    return topN > 0 ? rows.slice(0, topN) : rows;
-  }, [pivotResult, pm, sortBy, sortDir, topN]);
-
-  const grandTotals = useMemo(() => {
-    if (!pivotResult) return { colVals: {}, gl: 0, gr: 0 };
-    const colVals = {};
-    let gl = 0, gr = 0;
-    for (const { sub } of pivotResult.tbl.values()) {
-      for (const [c, v] of sub) {
-        if (!colVals[c]) colVals[c] = [0, 0, 0, 0];
-        for (let i = 0; i < 4; i++) colVals[c][i] += v[i];
-        gl += v[0]; gr += v[1];
-      }
-    }
-    return { colVals, gl, gr };
-  }, [pivotResult]);
-
-  const unapplied = useMemo(() => {
-    if (!matConfig) return [];
-    const ds  = new Set(matConfig.dims);
-    const all = new Set([...rowDims, ...colDims]);
-    const out = [];
-    if (filters.sources?.size > 0 && !ds.has('src') && !all.has('src')) out.push('Source');
-    if (filters.states?.size  > 0 && !ds.has('st')  && !all.has('st'))  out.push('State');
-    if (filters.models?.size  > 0 && !ds.has('mdl') && !all.has('mdl')) out.push('Model');
-    return out;
-  }, [matConfig, filters, rowDims, colDims]);
-
-  function toggleCollapse(label) {
-    setCollapsed(prev => {
-      const next = new Set(prev);
-      next.has(label) ? next.delete(label) : next.add(label);
-      return next;
-    });
-  }
-
-  function toggleMetric(key) {
-    setMetrics(prev =>
-      prev.includes(key)
-        ? prev.length > 1 ? prev.filter(k => k !== key) : prev
-        : [...prev, key]
-    );
-  }
-
-  function addRowDim(key) {
-    if (rowDims.includes(key) || colDims.includes(key)) return;
-    setRowDims([...rowDims, key]);
-    setAddRowOpen(false);
-    setCollapsed(new Set());
-  }
-
-  function removeRowDim(idx) {
-    if (rowDims.length === 1) return;
-    setRowDims(rowDims.filter((_, i) => i !== idx));
-    setCollapsed(new Set());
-  }
-
-  function addColDim(key) {
-    if (colDims.includes(key) || rowDims.includes(key)) return;
-    setColDims([...colDims, key]);
-    setAddColOpen(false);
-    setSortBy('__total__');
-  }
-
-  function removeColDim(idx) {
-    if (colDims.length === 1) return;
-    setColDims(colDims.filter((_, i) => i !== idx));
-    setSortBy('__total__');
-  }
-
-  function handleExport() {
-    if (!pivotResult || sortedRows.length === 0) return;
-    const hasR2  = rowDims.length > 1;
-    const hasC2  = colDims.length > 1;
-    const dimLbl = k => DIMS.find(d => d.key === k)?.label || k;
-    const mLbl   = k => METRICS.find(x => x.key === k)?.label || k;
-    const colLabel = ck => hasC2
-      ? ck.slice(0, ck.indexOf(COL_SEP)) + ' — ' + ck.slice(ck.indexOf(COL_SEP) + 1)
-      : ck;
-
-    const hdr = [dimLbl(rowDims[0])];
-    if (hasR2) hdr.push(dimLbl(rowDims[1]));
-    for (const ck of orderedCols)
-      for (const m of metrics)
-        hdr.push(metrics.length > 1 ? `${colLabel(ck)} — ${mLbl(m)}` : colLabel(ck));
-    for (const m of metrics)
-      hdr.push(metrics.length > 1 ? `TOTAL — ${mLbl(m)}` : 'TOTAL');
-
-    const aoa = [hdr];
-    const pushCells = (arr, cMap) => {
-      for (const ck of orderedCols)
-        for (const m of metrics) {
-          const v = getMetricVal(cMap.get(ck), m);
-          arr.push(m === 'retpct' ? +(v.toFixed(2)) : v);
-        }
-      for (const m of metrics) {
-        const t = rowTotal(cMap, m);
-        arr.push(m === 'retpct' ? +(t.toFixed(2)) : t);
-      }
-    };
-    for (const { label, entry } of sortedRows) {
-      if (!hasR2) { const r = [label]; pushCells(r, entry.sub); aoa.push(r); }
-      else {
-        const rSub = [label, 'Subtotal']; pushCells(rSub, entry.sub); aoa.push(rSub);
-        for (const [r2Lbl, cMap] of entry.children) {
-          const rChild = ['', r2Lbl]; pushCells(rChild, cMap); aoa.push(rChild);
-        }
-      }
-    }
-    const gtRow = hasR2 ? ['GRAND TOTAL', ''] : ['GRAND TOTAL'];
-    for (const ck of orderedCols)
-      for (const m of metrics) {
-        const v = getMetricVal(grandTotals.colVals[ck], m);
-        gtRow.push(m === 'retpct' ? +(v.toFixed(2)) : v);
-      }
-    for (const m of metrics) {
-      let t = 0;
-      if (m === 'retpct') t = grandTotals.gl > 0 ? +(grandTotals.gr/grandTotals.gl*100).toFixed(2) : 0;
-      else { for (const { sub } of pivotResult.tbl.values()) for (const v of sub.values()) t += getMetricVal(v, m); t = +t.toFixed(2); }
-      gtRow.push(t);
-    }
-    aoa.push(gtRow);
-    exportXlsx({ ['Pivot']: aoa }, `Hero_Pivot_${Date.now()}`);
-  }
-
-  const hasR2        = rowDims.length > 1;
-  const hasC2        = colDims.length > 1;
-  const multiMetric  = metrics.length > 1;
-  const allDims      = [...rowDims, ...colDims];
-  const unsupported      = new Set(allDims).size < allDims.length || !matConfig;
-  const awaitingPipeline = !unsupported && !(data[matConfig?.key]);
-  const noData           = !unsupported && !awaitingPipeline && (!pivotResult || pivotResult.tbl.size === 0);
-
-  const selSt = { padding:'6px 10px', fontSize:13, border:'1px solid #CBD5E1', borderRadius:8,
-                  background:'#fff', color:'#0f172a', fontFamily:'inherit', cursor:'pointer' };
-
-  const makePill = (dim, onRemove, canRemove) => {
-    const label = DIMS.find(d => d.key === dim)?.label || dim;
-    return ce('span', { key: dim,
-      style:{ display:'inline-flex', alignItems:'center', gap:3, padding:'4px 10px',
-              borderRadius:20, fontSize:12, fontWeight:600, background:'#1a3a5c', color:'#fff' }
-    },
-      label,
-      canRemove && ce('span', {
-        onClick: e => { e.stopPropagation(); onRemove(); },
-        style:{ marginLeft:2, cursor:'pointer', opacity:0.75, fontSize:15, lineHeight:1 }
-      }, '×')
-    );
-  };
-
-  const addPillBtn = (onClick) =>
-    ce('button', { onClick,
-      style:{ padding:'4px 10px', borderRadius:20, fontSize:12, fontWeight:600,
-              cursor:'pointer', border:'1.5px dashed #94A3B8',
-              background:'#fff', color:'#64748B' }
-    }, '+ Add');
-
-  const dimDropdown = (items, onSelect) =>
-    ce('div', { style:{ position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:20,
-        background:'#fff', border:'1px solid #E2E8F0', borderRadius:8,
-        boxShadow:'0 4px 16px rgba(0,0,0,0.12)', minWidth:140, overflow:'hidden' } },
-      items.map(d => ce('div', {
-        key: d.key, onClick: () => onSelect(d.key),
-        style:{ padding:'8px 14px', fontSize:13, cursor:'pointer', color:'#0f172a' },
-        onMouseEnter: e => e.currentTarget.style.background = '#F1F5F9',
-        onMouseLeave: e => e.currentTarget.style.background = '',
-      }, d.label))
-    );
-
-  const metricPill = m => {
-    const active = metrics.includes(m.key);
-    return ce('span', { key: m.key, onClick: () => toggleMetric(m.key),
-      style:{ display:'inline-flex', alignItems:'center', padding:'4px 10px',
-              borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer', userSelect:'none',
-              border: active ? '1.5px solid #1a3a5c' : '1.5px solid #CBD5E1',
-              background: active ? '#1a3a5c' : '#fff',
-              color: active ? '#fff' : '#475569' }
-    }, m.label);
-  };
-
-  // ── Render ────────────────────────────────────────────────────────
-  return ce('div', { style:{ padding:'0 4px' } },
-
-    /* ── Config bar ── */
-    ce('div', { style:{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'flex-start',
-        padding:'16px 18px', background:'#F8FAFC', borderRadius:12,
-        border:'1px solid #E2E8F0', marginBottom:14 } },
-
-      /* ROWS */
-      ce('div', { style:{ minWidth:80 } },
-        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Rows'),
-        ce('div', { style:{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' } },
-          rowDims.map((dim, idx) => makePill(dim, () => removeRowDim(idx), rowDims.length > 1)),
-          rowDims.length < 2 &&
-            ce('div', { style:{ position:'relative' } },
-              addPillBtn(() => setAddRowOpen(o => !o)),
-              addRowOpen && dimDropdown(
-                DIMS.filter(d => !rowDims.includes(d.key) && !colDims.includes(d.key)),
-                addRowDim
-              )
-            )
-        )
-      ),
-
-      ce('div', { style:{color:'#CBD5E1',fontSize:22,alignSelf:'center',fontWeight:300,paddingTop:18} }, '×'),
-
-      /* COLUMNS */
-      ce('div', { style:{ minWidth:80 } },
-        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Columns'),
-        ce('div', { style:{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' } },
-          colDims.map((dim, idx) => makePill(dim, () => removeColDim(idx), colDims.length > 1)),
-          colDims.length < 2 &&
-            ce('div', { style:{ position:'relative' } },
-              addPillBtn(() => setAddColOpen(o => !o)),
-              addColOpen && dimDropdown(
-                DIMS.filter(d => !colDims.includes(d.key) && !rowDims.includes(d.key)),
-                addColDim
-              )
-            )
-        )
-      ),
-
-      ce('div', { style:{width:1,height:40,background:'#E2E8F0',alignSelf:'center',marginTop:20} }),
-
-      /* VALUES */
-      ce('div', null,
-        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Values'),
-        ce('div', { style:{ display:'flex', gap:6, flexWrap:'wrap' } },
-          METRICS.map(metricPill)
-        )
-      ),
-
-      ce('div', { style:{width:1,height:40,background:'#E2E8F0',alignSelf:'center',marginTop:20} }),
-
-      /* SORT — hide per-column sort when 2 col dims (composite keys aren't readable labels) */
-      ce('div', null,
-        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Sort By'),
-        ce('select', { value:sortBy, onChange:e=>setSortBy(e.target.value), style:selSt },
-          ce('option',{value:'__total__'},'Total'),
-          ce('option',{value:'__label__'},'Row Label'),
-          ...(!hasC2 ? orderedCols.slice(0,8).map(c => ce('option',{key:c,value:c}, c.length>15?c.slice(0,14)+'…':c)) : [])
-        )
-      ),
-
-      ce('div', null,
-        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Order'),
-        ce('select', { value:sortDir, onChange:e=>setSortDir(e.target.value), style:selSt },
-          ce('option',{value:'desc'},'↓  High → Low'),
-          ce('option',{value:'asc' },'↑  Low → High'),
-        )
-      ),
-
-      ce('div', null,
-        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Show'),
-        ce('select', { value:topN, onChange:e=>setTopN(+e.target.value), style:selSt },
-          ce('option',{value:10 },'Top 10'),
-          ce('option',{value:20 },'Top 20'),
-          ce('option',{value:50 },'Top 50'),
-          ce('option',{value:100},'Top 100'),
-          ce('option',{value:0  },'All rows'),
-        )
-      ),
-
-      !unsupported && !noData && !awaitingPipeline &&
-        ce('div', { style:{marginLeft:'auto',alignSelf:'flex-end',paddingTop:20} },
-          ce(ExportBtn, { onClick: handleExport })
-        ),
-    ),
-
-    /* click-away overlays for dropdowns */
-    (addRowOpen || addColOpen) && ce('div', {
-      style:{position:'fixed',inset:0,zIndex:10},
-      onClick:()=>{ setAddRowOpen(false); setAddColOpen(false); }
-    }),
-
-    /* ── Unapplied-filter warning ── */
-    unapplied.length > 0 && ce('div', {
-      style:{ padding:'7px 14px', background:'#FFF3CD', border:'1px solid #F5A623',
-              borderRadius:8, fontSize:12, color:'#92400E', marginBottom:12 }
-    }, `⚠  ${unapplied.join(', ')} filter${unapplied.length>1?'s':''} not applied — not a dimension in this matrix.`),
-
-    /* ── State messages ── */
-    unsupported && ce('div', { style:{ textAlign:'center', padding:50, color:'#94A3B8', fontSize:14 } },
-      new Set(allDims).size < allDims.length
-        ? 'A dimension cannot appear in both Rows and Columns.'
-        : `The combination ${rowDims.map(k=>DIMS.find(d=>d.key===k)?.label||k).join(' + ')} × ${colDims.map(k=>DIMS.find(d=>d.key===k)?.label||k).join(' + ')} is not supported — no matching data matrix.`
-    ),
-
-    awaitingPipeline && ce('div', { style:{ textAlign:'center', padding:50, color:'#94A3B8', fontSize:14 } },
-      '📦 This combination will be available after the next pipeline run.'
-    ),
-
-    noData && ce('div', { style:{ textAlign:'center', padding:50, color:'#94A3B8', fontSize:14 } },
-      'No data matches the current filters.'
-    ),
-
-    /* ── Summary Grid ── */
-    !unsupported && !awaitingPipeline && !noData && grandTotals.gl > 0 &&
-    ce('div', { className:'card', style:{padding:'10px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
-      ce('div', { style:{display:'flex',flexWrap:'wrap',alignItems:'stretch'} },
-        ...[
-          { label:'Total Leads', value:Nf(grandTotals.gl), color:'#003087' },
-          { label:'Retails',     value:Nf(grandTotals.gr), color:'#E31837' },
-          { label:'L2R%', value:Pf(grandTotals.gl>0?grandTotals.gr/grandTotals.gl*100:0), color:'#D97706' },
-          ...(data.rt_cols ? [
-            { label:'DMS',      value:Nf(Object.values(grandTotals.colVals).reduce((s,v)=>s+(v[2]||0),0)), color:'#7C3AED' },
-            { label:'Call Out', value:Nf(Object.values(grandTotals.colVals).reduce((s,v)=>s+(v[3]||0),0)), color:'#0891B2' },
-          ] : []),
-          { label:'Rows (shown)', value:String(sortedRows.length),  color:'#475569' },
-          { label:'Columns',      value:String(orderedCols.length), color:'#475569' },
-        ].map((s,i) => ce('div', { key:i, style:{
-          padding:'6px 16px', borderLeft:i>0?'1px solid #E2E8F0':'none',
-          display:'flex', flexDirection:'column', gap:2
-        }},
-          ce('div',{style:{fontSize:9,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'.06em',whiteSpace:'nowrap'}},s.label),
-          ce('div',{style:{fontSize:15,fontWeight:700,color:s.color,fontFamily:'DM Mono,monospace'}},s.value)
-        ))
-      )
-    ),
-
-    /* ── Pivot table ── */
-    !unsupported && !awaitingPipeline && !noData &&
-    ce('div', { style:{ overflowX:'auto', borderRadius:12, border:'1px solid #E2E8F0' } },
-      ce('table', { style:{ width:'100%', borderCollapse:'collapse', fontSize:13 } },
-
-        ce('thead', null, (() => {
-          // Header layout:
-          // showOuterRow: col1 groups (hasC2) OR col values spanning metrics (!hasC2+multiMetric)
-          // showMidRow:   col2 values each spanning metrics (hasC2 + multiMetric only)
-          // bottomRow:    row-dim labels + innermost headers + TOTAL (always)
-          const showOuterRow = hasC2 || multiMetric;
-          const showMidRow   = hasC2 && multiMetric;
-          const numHdrRows   = (showOuterRow ? 1 : 0) + (showMidRow ? 1 : 0) + 1;
-          const topBg   = '#DBEAFE';
-          const topTxt  = '#1E3A8A';
-          const midBg   = '#BFDBFE';
-          const midTxt  = '#1E3A8A';
-          const botBg   = '#1a3a5c';
-          const botTxt  = '#fff';
-
-          // Label cell helper for row-dim columns
-          const rowLabelTh = (dim, i, bg, txt, small) =>
-            ce('th', { key:`rl_${dim}`,
-              style:{ padding: small?'6px 16px':'10px 16px', textAlign:'left', fontWeight:700,
-                      whiteSpace:'nowrap', color: txt,
-                      position: i===0 ? 'sticky' : undefined, left: i===0 ? 0 : undefined,
-                      zIndex: i===0 ? 3 : undefined,
-                      background: bg,
-                      minWidth: i===0 ? 140 : 110,
-                      borderRight: i===rowDims.length-1 ? `1px solid ${txt==='#fff'?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.1)'}` : 'none',
-                      cursor: i===0 ? 'pointer' : 'default', userSelect:'none' },
-              onClick: i===0 ? ()=>{ setSortBy('__label__'); setSortDir(d=>d==='asc'?'desc':'asc'); } : undefined
-            }, (DIMS.find(d=>d.key===dim)?.label||dim) + (i===0&&sortBy==='__label__'?(sortDir==='asc'?' ↑':' ↓'):''));
-
-          const rows = [];
-
-          // ── OUTER ROW ──────────────────────────────────────────────
-          if (showOuterRow) {
-            rows.push(ce('tr', { key:'hdr0', style:{ background:topBg } },
-              ce('th', { colSpan: rowDims.length,
-                style:{ padding:'7px 16px', textAlign:'left', fontWeight:700, color:topTxt,
-                        position:'sticky', left:0, zIndex:3, background:topBg,
-                        borderRight:'1px solid rgba(0,0,0,0.1)' }
-              }, rowDims.map(k=>DIMS.find(d=>d.key===k)?.label||k).join(' → ')),
-
-              ...(hasC2
-                // col1 group cells
-                ? colGroups.map(({c0, span}, gi) =>
-                    ce('th', { key:`cg_${c0}`, colSpan: span * metrics.length,
-                      style:{ padding:'7px 12px', textAlign:'center', fontWeight:700, whiteSpace:'nowrap',
-                              color:topTxt, background:topBg,
-                              borderLeft: gi===0 ? 'none' : '1px solid rgba(0,0,0,0.1)' }
-                    }, c0)
-                  )
-                // col values each spanning metrics (single col dim + multiMetric)
-                : orderedCols.map((col, ci) =>
-                    ce('th', { key:`cv_${col}`, colSpan: metrics.length,
-                      style:{ padding:'7px 12px', textAlign:'center', fontWeight:700, whiteSpace:'nowrap',
-                              color:topTxt, background:topBg,
-                              borderLeft: ci===0 ? 'none' : '1px solid rgba(0,0,0,0.1)' }
-                    }, col)
-                  )
-              ),
-
-              ce('th', { colSpan: metrics.length,
-                style:{ padding:'7px 12px', textAlign:'center', fontWeight:700,
-                        color:topTxt, background:topBg,
-                        borderLeft:'2px solid rgba(0,0,0,0.15)' }
-              }, 'TOTAL')
-            ));
-          }
-
-          // ── MIDDLE ROW (hasC2 + multiMetric) ───────────────────────
-          if (showMidRow) {
-            rows.push(ce('tr', { key:'hdr1', style:{ background:midBg } },
-              ce('th', { colSpan: rowDims.length,
-                style:{ padding:'6px 16px', position:'sticky', left:0, zIndex:3, background:midBg,
-                        borderRight:'1px solid rgba(0,0,0,0.1)' }
-              }, ''),
-              ...orderedCols.map((ck, ci) => {
-                const c1 = ck.slice(ck.indexOf(COL_SEP) + 1);
-                const prevC0 = ci > 0 ? orderedCols[ci-1].slice(0, orderedCols[ci-1].indexOf(COL_SEP)) : null;
-                const thisC0 = ck.slice(0, ck.indexOf(COL_SEP));
-                return ce('th', { key:`cm_${ck}`, colSpan: metrics.length,
-                  style:{ padding:'6px 10px', textAlign:'center', fontWeight:600, whiteSpace:'nowrap',
-                          color:midTxt, background:midBg, fontSize:12,
-                          borderLeft: (ci===0||thisC0!==prevC0) ? '1px solid rgba(0,0,0,0.1)' : 'none' }
-                }, c1);
-              }),
-              ce('th', { colSpan: metrics.length,
-                style:{ padding:'6px 10px', textAlign:'center', color:midTxt, background:midBg,
-                        borderLeft:'2px solid rgba(0,0,0,0.15)', fontSize:11, fontWeight:600 }
-              }, 'Total')
-            ));
-          }
-
-          // ── BOTTOM ROW (always) ────────────────────────────────────
-          rows.push(ce('tr', { key:'hdrB', style:{ background:botBg, color:botTxt } },
-            // Row dim label ths
-            rowDims.map((dim, i) => rowLabelTh(dim, i, botBg, botTxt, numHdrRows > 1)),
-
-            // Data column cells
-            ...orderedCols.flatMap((ck, ci) => {
-              const prevC0 = ci > 0 ? orderedCols[ci-1].slice(0, orderedCols[ci-1].indexOf(COL_SEP)) : null;
-              const thisC0 = hasC2 ? ck.slice(0, ck.indexOf(COL_SEP)) : null;
-              const groupBorder = hasC2 && (ci===0 || thisC0!==prevC0);
-
-              if (multiMetric) {
-                return metrics.map((m, mi) =>
-                  ce('th', { key:`bot_${ck}_${m}`,
-                    style:{ padding:'6px 10px', textAlign:'right', fontWeight:500, whiteSpace:'nowrap',
-                            fontSize:11, color:botTxt, background:botBg,
-                            borderLeft: mi===0&&groupBorder ? '1px solid rgba(255,255,255,0.15)'
-                                       : mi===0&&ci>0&&!hasC2 ? '1px solid rgba(255,255,255,0.1)' : 'none' }
-                  }, METRICS.find(x=>x.key===m)?.label||m)
-                );
-              }
-              // single metric
-              const colLabel = hasC2
-                ? ck.slice(ck.indexOf(COL_SEP) + 1)
-                : ck;
-              const sortable = !hasC2;
-              return [ce('th', { key:`bot_${ck}`,
-                style:{ padding: numHdrRows>1?'6px 12px':'10px 12px', textAlign:'right',
-                        fontWeight:600, whiteSpace:'nowrap', minWidth: multiMetric?68:80,
-                        color:botTxt, background:botBg,
-                        borderLeft: groupBorder ? '1px solid rgba(255,255,255,0.15)'
-                                   : ci>0&&!hasC2 ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                        cursor: sortable ? 'pointer' : 'default', userSelect:'none' },
-                onClick: sortable ? ()=>{ setSortBy(ck); setSortDir(d=>d==='asc'?'desc':'asc'); } : undefined
-              }, colLabel + (sortable&&sortBy===ck?(sortDir==='asc'?' ↑':' ↓'):''))];
-            }),
-
-            // TOTAL header(s)
-            ...metrics.map((m, mi) => {
-              const sortable = !multiMetric;
-              return ce('th', { key:`btot_${m}`,
-                style:{ padding: numHdrRows>1?'6px 10px':'10px 12px', textAlign:'right',
-                        fontWeight:700, whiteSpace:'nowrap',
-                        fontSize: multiMetric?11:13, color:botTxt, background:botBg,
-                        borderLeft: mi===0 ? '2px solid rgba(255,255,255,0.3)' : 'none',
-                        cursor: sortable ? 'pointer' : 'default', userSelect:'none' },
-                onClick: sortable ? ()=>{ setSortBy('__total__'); setSortDir(d=>d==='asc'?'desc':'asc'); } : undefined
-              }, multiMetric ? (METRICS.find(x=>x.key===m)?.label||m)
-                             : ('TOTAL'+(sortBy==='__total__'?(sortDir==='asc'?' ↑':' ↓'):'')));
-            })
-          ));
-
-          return rows;
-        })()),
-
-        ce('tbody', null,
-          sortedRows.flatMap(({ label, entry }, rowIdx) => {
-            const isCollapsed = hasR2 && collapsed.has(label);
-
-            // Cycling vibrant-pastel palette — each group gets its own hue family
-            const PALETTES = [
-              { hdr:'#93C5FD', txt:'#1E3A8A', cEven:'#EFF6FF', cOdd:'#DBEAFE', sep:'#BFDBFE' }, // sky
-              { hdr:'#6EE7B7', txt:'#065F46', cEven:'#ECFDF5', cOdd:'#D1FAE5', sep:'#A7F3D0' }, // emerald
-              { hdr:'#FCD34D', txt:'#78350F', cEven:'#FFFBEB', cOdd:'#FEF3C7', sep:'#FDE68A' }, // amber
-              { hdr:'#F9A8D4', txt:'#831843', cEven:'#FDF2F8', cOdd:'#FCE7F3', sep:'#FBCFE8' }, // pink
-              { hdr:'#C4B5FD', txt:'#4C1D95', cEven:'#F5F3FF', cOdd:'#EDE9FE', sep:'#DDD6FE' }, // violet
-              { hdr:'#5EEAD4', txt:'#134E4A', cEven:'#F0FDFA', cOdd:'#CCFBF1', sep:'#99F6E4' }, // teal
-              { hdr:'#FCA5A5', txt:'#7F1D1D', cEven:'#FEF2F2', cOdd:'#FEE2E2', sep:'#FECACA' }, // red
-              { hdr:'#FDBA74', txt:'#7C2D12', cEven:'#FFF7ED', cOdd:'#FED7AA', sep:'#FDDDB4' }, // orange
-            ];
-            const pal   = PALETTES[rowIdx % PALETTES.length];
-            const grpBg = hasR2 ? pal.hdr : (rowIdx%2===0 ? '#F8FAFC' : '#F1F5F9');
-            const grpTxt = hasR2 ? pal.txt : '#1E293B';
-            const grpSep = hasR2 ? pal.sep : '#E2E8F0';
-            const rows = [];
-
-            // Primary row (group header when hasR2, or single-dim data row)
-            rows.push(ce('tr', {
-              key: `p_${label}`,
-              style:{ background: grpBg, cursor: hasR2 ? 'pointer' : 'default' },
-              onClick: hasR2 ? () => toggleCollapse(label) : undefined
-            },
-              // Primary label (sticky)
-              ce('td', {
-                style:{ padding:'8px 16px', fontWeight: hasR2 ? 700 : 500,
-                        color: grpTxt, fontSize: hasR2 ? 13 : 12,
-                        position:'sticky', left:0, zIndex:2, background: grpBg,
-                        borderRight: `1px solid ${grpSep}`, whiteSpace:'nowrap' }
-              }, hasR2 ? (isCollapsed?'▶ ':'▼ ')+label : label),
-              // Secondary label col: "Subtotal" label or collapsed item count
-              hasR2 && ce('td', {
-                style:{ padding:'8px 10px', background: grpBg,
-                        color: grpTxt, opacity:0.7, fontSize:12,
-                        fontStyle:'italic', whiteSpace:'nowrap' }
-              }, isCollapsed ? `(${entry.children.size} items)` : 'Subtotal'),
-              // Data cells from sub (subtotals)
-              ...orderedCols.flatMap((ck, ci) => {
-                const prevC0 = ci > 0 ? orderedCols[ci-1].slice(0, orderedCols[ci-1].indexOf(COL_SEP)) : null;
-                const thisC0 = hasC2 ? ck.slice(0, ck.indexOf(COL_SEP)) : null;
-                const groupBorder = hasC2 && (ci===0 || thisC0!==prevC0);
-                return metrics.map((m, mi) =>
-                  ce('td', { key:`${ck}_${m}`,
-                    style:{ padding:'8px 12px', textAlign:'right',
-                            background: grpBg, color: grpTxt,
-                            fontWeight: hasR2 ? 700 : 400,
-                            borderLeft: mi===0&&(groupBorder||(multiMetric&&ci>0))
-                              ? `1px solid ${grpSep}` : 'none' }
-                  }, fmtV(entry.sub.get(ck), m))
-                );
-              }),
-              // Row totals
-              ...metrics.map((m, mi) =>
-                ce('td', { key:`tot_${m}`,
-                  style:{ padding:'8px 12px', textAlign:'right', fontWeight:700,
-                          background: grpBg, color: grpTxt,
-                          borderLeft: mi===0 ? `2px solid ${grpSep}` : 'none' }
-                }, fmtTotal(entry.sub, m))
-              )
-            ));
-
-            // Child rows (secondary dim, only when expanded)
-            if (hasR2 && !isCollapsed) {
-              let ci = 0;
-              for (const [r2Label, cMap] of entry.children) {
-                const cBg  = ci++%2===0 ? pal.cEven : pal.cOdd;
-                const cTxt = pal.txt;
-                rows.push(ce('tr', { key:`c_${label}_${r2Label}`, style:{ background:cBg } },
-                  // Empty first col (sticky)
-                  ce('td', {
-                    style:{ padding:'7px 16px', position:'sticky', left:0, zIndex:2,
-                            background:cBg, borderRight:`1px solid ${pal.sep}` }
-                  }, ''),
-                  // Secondary label
-                  ce('td', {
-                    style:{ padding:'7px 10px 7px 22px', color:cTxt, fontSize:12,
-                            fontWeight:500, whiteSpace:'nowrap' }
-                  }, r2Label),
-                  // Data cells
-                  ...orderedCols.flatMap((ck, colI) => {
-                    const prevC0 = colI > 0 ? orderedCols[colI-1].slice(0, orderedCols[colI-1].indexOf(COL_SEP)) : null;
-                    const thisC0 = hasC2 ? ck.slice(0, ck.indexOf(COL_SEP)) : null;
-                    const groupBorder = hasC2 && (colI===0 || thisC0!==prevC0);
-                    return metrics.map((m, mi) =>
-                      ce('td', { key:`${ck}_${m}`,
-                        style:{ padding:'7px 12px', textAlign:'right', color:cTxt,
-                                fontSize:12,
-                                borderLeft: mi===0&&(groupBorder||(multiMetric&&colI>0)) ? `1px solid ${pal.sep}` : 'none' }
-                      }, fmtV(cMap.get(ck), m))
-                    );
-                  }),
-                  // Row totals
-                  ...metrics.map((m, mi) =>
-                    ce('td', { key:`tot_${m}`,
-                      style:{ padding:'7px 12px', textAlign:'right', fontWeight:700, color:cTxt,
-                              fontSize:12, borderLeft: mi===0 ? `2px solid ${pal.sep}` : 'none' }
-                    }, fmtTotal(cMap, m))
-                  )
-                ));
-              }
-            }
-
-            return rows;
-          }),
-
-          /* Grand total row */
-          ce('tr', { style:{ background:'#1E3A8A', borderTop:'2px solid #1E40AF', fontWeight:700 } },
-            ce('td', {
-              colSpan: rowDims.length,
-              style:{ padding:'10px 16px', color:'#fff', position:'sticky', left:0, zIndex:2,
-                      background:'#1E3A8A', borderRight:'1px solid rgba(255,255,255,0.2)' }
-            }, 'GRAND TOTAL'),
-            ...orderedCols.flatMap((ck, ci) => {
-              const prevC0 = ci > 0 ? orderedCols[ci-1].slice(0, orderedCols[ci-1].indexOf(COL_SEP)) : null;
-              const thisC0 = hasC2 ? ck.slice(0, ck.indexOf(COL_SEP)) : null;
-              const groupBorder = hasC2 && (ci===0 || thisC0!==prevC0);
-              const cv = grandTotals.colVals[ck];
-              return metrics.map((m, mi) =>
-                ce('td', { key:`gt_${ck}_${m}`,
-                  style:{ padding:'10px 12px', textAlign:'right', color:'#fff', background:'#1E3A8A',
-                          borderLeft: mi===0&&(groupBorder||(multiMetric&&ci>0)) ? '1px solid rgba(255,255,255,0.2)' : 'none' }
-                }, fmtV(cv, m))
-              );
-            }),
-            ...metrics.map((m, mi) => {
-              let display;
-              if (m === 'retpct') {
-                display = grandTotals.gl>0 ? (grandTotals.gr/grandTotals.gl*100).toFixed(1)+'%' : '—';
-              } else {
-                const t = m === 'leads' ? grandTotals.gl
-                        : m === 'ret'   ? grandTotals.gr
-                        : Object.values(grandTotals.colVals).reduce((s, v) => s + getMetricVal(v, m), 0);
-                display = t > 0 ? t.toLocaleString() : '—';
-              }
-              return ce('td', { key:`gt_tot_${m}`,
-                style:{ padding:'10px 12px', textAlign:'right',
-                        borderLeft: mi===0 ? '2px solid rgba(255,255,255,0.3)' : 'none', color:'#fff' }
-              }, display);
-            })
-          )
-        )
-      )
-    )
-  );
-});
-
-/* ════════════════════════════════════════════════════════════════════
-   BOOTSTRAP
-   ════════════════════════════════════════════════════════════════════ */
-ReactDOM.createRoot(document.getElementById('root')).render(ce(AuthGate));
+ReactDOM.createRoot(document.getElementById('root')).render(ce(AuthGate,null));
 </script>
 </body>
 </html>
