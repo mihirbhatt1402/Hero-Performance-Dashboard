@@ -1363,7 +1363,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
           const aoa=[['Source','Leads','Retails','Contrib%','L2R%']];
           for (const s of srcBreak) aoa.push([s.src,s.l,s.r,+(s.l/totals.l*100).toFixed(2),+s.l2r.toFixed(2)]);
           aoa.push(['∑ Total',totals.l,totals.r,'100.0%',+totals.l2r.toFixed(2)]);
-          exportXlsx({'Source Summary':aoa},'TVS_Overview_Source');
+          exportXlsx({'Source Summary':aoa},'Hero_Overview_Source');
         }})
       ),
       ce('div', { className:'scroll-x' },
@@ -1402,7 +1402,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
           for (const mdl of heatData.top10) {
             aoa.push([mdl, ...heatData.top15.map(st => heatData.cell.get(mdl+'\x00'+st) || 0)]);
           }
-          exportXlsx({'Model×State':aoa}, 'TVS_Model_State_Heatmap');
+          exportXlsx({'Model×State':aoa}, 'Hero_Model_State_Heatmap');
         }})
       ),
       ce('div', { style:{fontSize:11,color:'#94A3B8',marginBottom:10} }, 'Cell shows lead count. Darker = higher volume. Month / Model / State filters apply.'),
@@ -2488,7 +2488,7 @@ function _TvsAdminPanel({ auth, onLogout, onViewDashboard }) {
         ce('span', { style:{fontSize:14,fontWeight:900,color:'#EA580C',fontFamily:'DM Mono,monospace',letterSpacing:'-.04em'} }, 'H')
       ),
       ce('div', null,
-        ce('div', { style:{fontSize:13,fontWeight:800,color:'#0f172a'} }, 'TVS Motor Company'),
+        ce('div', { style:{fontSize:13,fontWeight:800,color:'#0f172a'} }, 'Hero MotoCorp'),
         ce('div', { style:{fontSize:10,color:'#7C3AED',fontWeight:600} }, 'Admin Panel — Lead Disposition Dashboard'),
       )
     ),
@@ -2798,7 +2798,7 @@ const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months,
       rows.push(row);
     }
     rows.push(['∑ Grand Total',summaryAgg.grand.l,summaryAgg.grand.r,100,+summaryAgg.grand.l2r.toFixed(1),...allSrcs.flatMap(s=>{const v=summaryAgg.grandSrc[s]||EMPTY;return[v.l,v.r,+v.l2r.toFixed(1)];})]);
-    exportXlsx({'City × Source':rows},'TVS_CitySource_All');
+    exportXlsx({'City × Source':rows},'Hero_CitySource_All');
   }, [summaryAgg, allSrcs]);
 
   if (!summaryAgg) return ce('div',{style:{textAlign:'center',padding:50,color:'#94A3B8',fontSize:14}},
@@ -2854,7 +2854,7 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
     const gtRow=['∑ Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];
     for (const ck of colKeys) { let tL=0,tR=0; for(const da of Object.values(rowAggs)){const ca=da.colAggs[ck]||{l:0,r:0};tL+=ca.l;tR+=ca.r;} const tL2r=tL>0?tR/tL*100:0; gtRow.push(tL,tR,+tL2r.toFixed(1)); }
     rows.push(gtRow);
-    exportXlsx({[label]:rows},'TVS_StateModel_'+(label==='Summary'?'All':label.replace("'","")));
+    exportXlsx({[label]:rows},'Hero_StateModel_'+(label==='Summary'?'All':label.replace("'","")));
   }, []);
 
   return ce('div', { className:'fade-up' },
@@ -2922,7 +2922,7 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
     const gtRow=['∑ Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];
     for (const ck of colKeys) { let tL=0,tR=0; for(const da of Object.values(rowAggs)){const ca=da.colAggs[ck]||{l:0,r:0};tL+=ca.l;tR+=ca.r;} const tL2r=tL>0?tR/tL*100:0; gtRow.push(tL,tR,+tL2r.toFixed(1)); }
     rows.push(gtRow);
-    exportXlsx({'City × Model':rows},'TVS_CityModel_All');
+    exportXlsx({'City × Model':rows},'Hero_CityModel_All');
   }, [summaryAgg]);
 
   if (cxm.length===0) return ce('div',{style:{textAlign:'center',padding:50,color:'#94A3B8',fontSize:14}},
@@ -3396,7 +3396,7 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
         const pm = mMap.get(ei);
         mat.push([maps.mdl[ei], ...sortedPi.map(pi => pm?.get(pi)||0)]);
       }
-      exportXlsx({ [M+' Summary']: sum, [M+' Matrix']: mat }, 'TVS_Dispersion_'+M.replace("'",""));
+      exportXlsx({ [M+' Summary']: sum, [M+' Matrix']: mat }, 'Hero_Dispersion_'+M.replace("'",""));
     };
 
     const thRotate = { writingMode:'vertical-rl', transform:'rotate(180deg)',
@@ -3969,7 +3969,7 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT }) {
       gtRow.push(t);
     }
     aoa.push(gtRow);
-    exportXlsx({ ['Pivot']: aoa }, `TVS_Pivot_${Date.now()}`);
+    exportXlsx({ ['Pivot']: aoa }, `Hero_Pivot_${Date.now()}`);
   }
 
   const hasR2        = rowDims.length > 1;
