@@ -568,7 +568,7 @@ function parseHeroRetailRows(raw){
     const callType=ctLow.includes('dms')?'dms':ctLow.includes('call')?'co':'other';
     if(callType==='dms'){if(!latestDmsDate||retailDate>latestDmsDate)latestDmsDate=retailDate;}
     if(callType==='co'){if(!latestCoDate||retailDate>latestCoDate)latestCoDate=retailDate;}
-    const purchasedModel=get(r,['model','model name','vehicle model','vehicle_model','product','product name','vehicle name','vehiclename','vehicle','model_name','productname']);
+    const purchasedModel=get(r,['purchasedmodel','purchased model','purchased_model','purchasedmodelname','purchased model name','model','model name','vehicle model','vehicle_model','product','product name','vehicle name','vehiclename','vehicle','model_name','productname']);
     rows.push({sourceLeadId,performanceMonth,callType,retailDate,purchasedModel});
   }
   const uniqueIds=new Set(rows.map(r=>r.sourceLeadId)).size;
@@ -759,7 +759,7 @@ function buildPayload(joinedRows){
       a4(bdmA,rep+'|'+si+'|'+li,1,Ra2,Rd2,Rc2);
       if(r.isUnique)a4(u_bdmA,rep+'|'+si+'|'+li,1,Ra2,Rd2,Rc2);
     }
-    // Retail Dispersion Model: SAME vs CROSS per enquired model
+    // Retail Dispersion Model: SAME vs CROSS per enquired model (all filter dims)
     if(isRetailed(r)){
       const enqN=normMdl(r.model);
       const purN=normMdl(r.purchasedModel);
@@ -767,7 +767,7 @@ function buildPayload(joinedRows){
       if(purN){
         const isSame=(enqN===purN)?1:0;
         const Ra2=1,Rd2=(r.callType==='dms')?1:0,Rc2=(r.callType==='co')?1:0;
-        a4(rdmA,mi+'|'+isSame+'|'+li,Ra2,Rd2,Rc2,0);
+        a4(rdmA,mi+'|'+isSame+'|'+si+'|'+sti+'|'+ci+'|'+lti+'|'+li,Ra2,Rd2,Rc2,0);
       }
     }
   }
@@ -775,6 +775,10 @@ function buildPayload(joinedRows){
   const f2=m=>[...m.entries()].map(([k,v])=>{const[a,b]=k.split('|');return[+a,+b,v[0],v[1],v[2],v[3]];});
   const f3=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0],v[1],v[2],v[3]];});
   const f5=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e]=k.split('|');return[+a,+b,+c,+d,+e,v[0],v[1],v[2],v[3]];});
+  const f7=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e,f,g]=k.split('|');return[+a,+b,+c,+d,+e,+f,+g,v[0],v[1],v[2],v[3]];});
+  // QA: Retail Dispersion summary
+  {const rdmRows=f7(rdmA);let same=0,cross=0;for(const row of rdmRows){if(row[1]===1)same+=row[7];else cross+=row[7];}
+   const total=same+cross;console.log('[Hero RDM QA] rdm rows:',rdmRows.length,'| SAME:',same,'| CROSS:',cross,'| TOTAL:',total,'| DISP%:',total>0?(cross/total*100).toFixed(1)+'%':'N/A','| Models:',new Set(rdmRows.map(r=>r[0])).size);}
   return{
     t:now,
     maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state},
@@ -786,7 +790,7 @@ function buildPayload(joinedRows){
     // On Update matrices (booking_month dimension)
     bm_monthly:f1(bm_mA),bm_sm:f2(bm_smA),bm_mm:f3(bm_mmA),bm_stm:f3(bm_stmA),bm_ltm:f3(bm_ltmA),
     bm_mxst:f3(bm_mxstA),bm_cm:f2(bm_cmA),bm_csm:f3(bm_csmA),bm_cxm:f3(bm_cxmA),bm_univ:f5(bm_univA),
-    disp:[],u_disp:[],zm:[],u_zm:[],bdm:f3(bdmA),u_bdm:f3(u_bdmA),rdm:f3(rdmA),
+    disp:[],u_disp:[],zm:[],u_zm:[],bdm:f3(bdmA),u_bdm:f3(u_bdmA),rdm:f7(rdmA),
     mlt:[],stlt:[],cdm:[],cdsm:[],stcm:[],
     u_mlt:[],u_stlt:[],u_cdm:[],u_cdsm:[],u_stcm:[],
     stdm:[],mxdl:[],ltdl:[],u_stdm:[],u_mxdl:[],u_ltdl:[],
@@ -2406,32 +2410,37 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
 });
 
 /* ════════════════════════════════════════════════════════════════════
-   BUYING INTENT TAB
-   ════════════════════════════════════════════════════════════════════ */
-/* ════════════════════════════════════════════════════════════════════
    RETAIL DISPERSION TAB
    Enquired Model vs Purchased Model: SAME / CROSS / TOTAL / DISPERSION%
-   rdm row format: [enq_mdl_idx, is_same(1/0), lm_idx, count_all, count_dms, count_co, _]
+   rdm row format: [mi, is_same, si, sti, ci, lti, lm_idx, cnt_all, cnt_dms, cnt_co, _]
    ════════════════════════════════════════════════════════════════════ */
 const DispersionTab = React.memo(function DispersionTab({ data, filters, months, RT }) {
   const { maps, rdm } = data;
   if (!rdm) return ce('div',{className:'fade-up'},ce('div',{className:'card',style:{padding:32,textAlign:'center',color:'#94A3B8'}},'Retail Dispersion data not yet available. Please sync data.'));
 
-  // RT toggle => which count column: all=3, dms=4, co=5
-  const rtCol = RT === 'dms' ? 4 : RT === 'co' ? 5 : 3;
+  // RT toggle => which count column: all=7, dms=8, co=9
+  const rtCol = RT === 'dms' ? 8 : RT === 'co' ? 9 : 7;
 
-  // Build dispersion map for a given set of months
+  // Build dispersion map for a given set of months, respecting all active filters
   function buildTable(monthSet) {
-    const allMdl = !filters.models || filters.models.size === 0;
+    const allMdl = !filters.models    || filters.models.size    === 0;
+    const allSrc = !filters.sources   || filters.sources.size   === 0;
+    const allSt  = !filters.states    || filters.states.size    === 0;
+    const allCi  = !filters.cities    || filters.cities.size    === 0;
+    const allLt  = !filters.leadTypes || filters.leadTypes.size === 0;
     const byModel = new Map();
     for (const row of rdm) {
-      const enqMi = row[0], isSame = row[1], lmIdx = row[2], cnt = row[rtCol] || 0;
+      const mi=row[0],isSame=row[1],si=row[2],sti=row[3],ci=row[4],lti=row[5],li=row[6];
+      const cnt = row[rtCol] || 0;
       if (cnt === 0) continue;
-      const month = maps.lm[lmIdx];
-      if (!monthSet.has(month)) continue;
-      if (!allMdl && !filters.models.has(maps.mdl[enqMi])) continue;
-      if (!byModel.has(enqMi)) byModel.set(enqMi, { same: 0, cross: 0 });
-      const e = byModel.get(enqMi);
+      if (!monthSet.has(maps.lm[li])) continue;
+      if (!allMdl && !filters.models.has(maps.mdl[mi])) continue;
+      if (!allSrc && !filters.sources.has(maps.src[si])) continue;
+      if (!allSt  && !filters.states.has(maps.st[sti])) continue;
+      if (!allCi  && !filters.cities.has(maps.city[ci])) continue;
+      if (!allLt  && !filters.leadTypes.has(maps.lt[lti])) continue;
+      if (!byModel.has(mi)) byModel.set(mi, { same: 0, cross: 0 });
+      const e = byModel.get(mi);
       if (isSame) e.same += cnt; else e.cross += cnt;
     }
     return byModel;
