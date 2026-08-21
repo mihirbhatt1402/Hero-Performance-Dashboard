@@ -417,7 +417,11 @@ function parseHeroRetailRows(raw){
       else{const m2=dateStr.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})$/);if(m2)d=new Date(+m2[1],+m2[2]-1,+m2[3]);}
       if(d&&!isNaN(d.getTime())&&(!maxRetailDate||d>maxRetailDate))maxRetailDate=d;
     }
-    rows.push({sourceLeadId,performanceMonth});
+    // Extract Call Type (DMS vs Call Out)
+    const ctRaw=get(r,['call type','calltype','call_type','call-type']);
+    const ctLow=ctRaw.toLowerCase();
+    const callType=ctLow.includes('dms')?'dms':ctLow.includes('call')?'co':'other';
+    rows.push({sourceLeadId,performanceMonth,callType});
   }
   const uniqueIds=new Set(rows.map(r=>r.sourceLeadId)).size;
   return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds},maxRetailDate};
@@ -436,11 +440,11 @@ function joinHeroData(leadResult,retailResult){
     const retail=retailMap.get(lr.opty_id)||[];
     const isBooked=retail.length>0;
     if(isBooked){matched++;if(retail.length>1)multiRetail++;}else unmatched++;
-    const booking_month=isBooked
-      ?retail.sort((a,b)=>heroMonthOrder(a.performanceMonth)-heroMonthOrder(b.performanceMonth))[0].performanceMonth
-      :'';
+    const sorted=isBooked?retail.sort((a,b)=>heroMonthOrder(a.performanceMonth)-heroMonthOrder(b.performanceMonth)):[];
+    const booking_month=isBooked?sorted[0].performanceMonth:'';
+    const callType=isBooked?(sorted[0].callType||'other'):'other';
     return{opty_id:lr.opty_id,lt:lr.lt,source:lr.source,model:lr.model,city:lr.city,state:lr.state,
-      lead_month:lr.lead_month,booking_month,isUnique:lr.isUnique,isBooked};
+      lead_month:lr.lead_month,booking_month,isUnique:lr.isUnique,isBooked,callType};
   });
   return{rows:joined,diagnostics:{
     leadTotalRows:leadDiag.totalRows,leadUniqueIds:leadDiag.uniqueIds,leadDupIds:leadDiag.dupIds,
@@ -505,8 +509,8 @@ function buildPayload(joinedRows){
   const bm_mA=new Map(),bm_smA=new Map(),bm_mmA=new Map(),bm_stmA=new Map(),bm_ltmA=new Map();
   const bm_mxstA=new Map(),bm_cmA=new Map(),bm_csmA=new Map(),bm_cxmA=new Map(),bm_univA=new Map();
 
-  function a2(m,k,L,R){const e=m.get(k);if(e){e[0]+=L;e[1]+=R;}else m.set(k,[L,R]);}
-  function a1(m,k,L){const e=m.get(k);if(e){e[0]+=L;}else m.set(k,[L]);}
+  // a4: accumulate [L, R_all, R_dms, R_co]
+  function a4(m,k,L,Ra,Rd,Rc){const e=m.get(k);if(e){e[0]+=L;e[1]+=Ra;e[2]+=Rd;e[3]+=Rc;}else m.set(k,[L,Ra,Rd,Rc]);}
 
   for(const r of joinedRows){
     const li=lmMap[r.lead_month||'Unknown'];
@@ -516,65 +520,66 @@ function buildPayload(joinedRows){
     const lti=ltMap[r.lt||'Unknown'];
     const ci=cityMap[r.city||'Unknown'];
     const L=1,R=isRetailed(r)?1:0;
+    const Rd=(R&&r.callType==='dms')?1:0;
+    const Rc=(R&&r.callType==='co')?1:0;
 
     // On Create (lead_month dimension)
-    a2(monthlyA,li+'',L,R);
-    a2(smA,si+'|'+li,L,R);
-    a2(mmA,mi+'|'+si+'|'+li,L,R);
-    a2(stmA,sti+'|'+si+'|'+li,L,R);
-    a2(ltmA,lti+'|'+si+'|'+li,L,R);
-    a1(mxstA,mi+'|'+sti+'|'+li,L);
-    a2(cmA,ci+'|'+li,L,R);
-    a2(csmA,ci+'|'+si+'|'+li,L,R);
-    a2(cxmA,ci+'|'+mi+'|'+li,L,R);
-    a2(univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+li,L,R);
+    a4(monthlyA,li+'',L,R,Rd,Rc);
+    a4(smA,si+'|'+li,L,R,Rd,Rc);
+    a4(mmA,mi+'|'+si+'|'+li,L,R,Rd,Rc);
+    a4(stmA,sti+'|'+si+'|'+li,L,R,Rd,Rc);
+    a4(ltmA,lti+'|'+si+'|'+li,L,R,Rd,Rc);
+    a4(mxstA,mi+'|'+sti+'|'+li,L,R,Rd,Rc);
+    a4(cmA,ci+'|'+li,L,R,Rd,Rc);
+    a4(csmA,ci+'|'+si+'|'+li,L,R,Rd,Rc);
+    a4(cxmA,ci+'|'+mi+'|'+li,L,R,Rd,Rc);
+    a4(univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+li,L,R,Rd,Rc);
     if(r.isUnique){
-      a2(u_mA,li+'',L,R);
-      a2(u_smA,si+'|'+li,L,R);
-      a2(u_mmA,mi+'|'+si+'|'+li,L,R);
-      a2(u_stmA,sti+'|'+si+'|'+li,L,R);
-      a2(u_ltmA,lti+'|'+si+'|'+li,L,R);
-      a1(u_mxstA,mi+'|'+sti+'|'+li,L);
-      a2(u_cmA,ci+'|'+li,L,R);
-      a2(u_csmA,ci+'|'+si+'|'+li,L,R);
-      a2(u_cxmA,ci+'|'+mi+'|'+li,L,R);
-      a2(u_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+li,L,R);
+      a4(u_mA,li+'',L,R,Rd,Rc);
+      a4(u_smA,si+'|'+li,L,R,Rd,Rc);
+      a4(u_mmA,mi+'|'+si+'|'+li,L,R,Rd,Rc);
+      a4(u_stmA,sti+'|'+si+'|'+li,L,R,Rd,Rc);
+      a4(u_ltmA,lti+'|'+si+'|'+li,L,R,Rd,Rc);
+      a4(u_mxstA,mi+'|'+sti+'|'+li,L,R,Rd,Rc);
+      a4(u_cmA,ci+'|'+li,L,R,Rd,Rc);
+      a4(u_csmA,ci+'|'+si+'|'+li,L,R,Rd,Rc);
+      a4(u_cxmA,ci+'|'+mi+'|'+li,L,R,Rd,Rc);
+      a4(u_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+li,L,R,Rd,Rc);
     }
 
     // On Update (booking_month for booked leads, lead_month for unbooked)
     const bmi=(r.isBooked&&r.booking_month)?lmMap[r.booking_month]:li;
-    a2(bm_mA,bmi+'',L,R);
-    a2(bm_smA,si+'|'+bmi,L,R);
-    a2(bm_mmA,mi+'|'+si+'|'+bmi,L,R);
-    a2(bm_stmA,sti+'|'+si+'|'+bmi,L,R);
-    a2(bm_ltmA,lti+'|'+si+'|'+bmi,L,R);
-    a1(bm_mxstA,mi+'|'+sti+'|'+bmi,L);
-    a2(bm_cmA,ci+'|'+bmi,L,R);
-    a2(bm_csmA,ci+'|'+si+'|'+bmi,L,R);
-    a2(bm_cxmA,ci+'|'+mi+'|'+bmi,L,R);
-    a2(bm_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+bmi,L,R);
+    a4(bm_mA,bmi+'',L,R,Rd,Rc);
+    a4(bm_smA,si+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_mmA,mi+'|'+si+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_stmA,sti+'|'+si+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_ltmA,lti+'|'+si+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_mxstA,mi+'|'+sti+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_cmA,ci+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_csmA,ci+'|'+si+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_cxmA,ci+'|'+mi+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+bmi,L,R,Rd,Rc);
   }
-  const f1=m=>[...m.entries()].map(([k,v])=>[+k,v[0],v[1]]);
-  const f2=m=>[...m.entries()].map(([k,v])=>{const[a,b]=k.split('|');return[+a,+b,v[0],v[1]];});
-  const f3=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0],v[1]];});
-  const f3L=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0]];});
-  const f5=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e]=k.split('|');return[+a,+b,+c,+d,+e,v[0],v[1]];});
+  const f1=m=>[...m.entries()].map(([k,v])=>[+k,v[0],v[1],v[2],v[3]]);
+  const f2=m=>[...m.entries()].map(([k,v])=>{const[a,b]=k.split('|');return[+a,+b,v[0],v[1],v[2],v[3]];});
+  const f3=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0],v[1],v[2],v[3]];});
+  const f5=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e]=k.split('|');return[+a,+b,+c,+d,+e,v[0],v[1],v[2],v[3]];});
   return{
     t:now,
     maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state},
     // On Create matrices (lead_month dimension)
     monthly:f1(monthlyA),sm:f2(smA),mm:f3(mmA),stm:f3(stmA),ltm:f3(ltmA),
-    mxst:f3L(mxstA),cm:f2(cmA),csm:f3(csmA),cxm:f3(cxmA),univ:f5(univA),
+    mxst:f3(mxstA),cm:f2(cmA),csm:f3(csmA),cxm:f3(cxmA),univ:f5(univA),
     u_monthly:f1(u_mA),u_sm:f2(u_smA),u_mm:f3(u_mmA),u_stm:f3(u_stmA),u_ltm:f3(u_ltmA),
-    u_mxst:f3L(u_mxstA),u_cm:f2(u_cmA),u_csm:f3(u_csmA),u_cxm:f3(u_cxmA),u_univ:f5(u_univA),
+    u_mxst:f3(u_mxstA),u_cm:f2(u_cmA),u_csm:f3(u_csmA),u_cxm:f3(u_cxmA),u_univ:f5(u_univA),
     // On Update matrices (booking_month dimension)
     bm_monthly:f1(bm_mA),bm_sm:f2(bm_smA),bm_mm:f3(bm_mmA),bm_stm:f3(bm_stmA),bm_ltm:f3(bm_ltmA),
-    bm_mxst:f3L(bm_mxstA),bm_cm:f2(bm_cmA),bm_csm:f3(bm_csmA),bm_cxm:f3(bm_cxmA),bm_univ:f5(bm_univA),
+    bm_mxst:f3(bm_mxstA),bm_cm:f2(bm_cmA),bm_csm:f3(bm_csmA),bm_cxm:f3(bm_cxmA),bm_univ:f5(bm_univA),
     disp:[],u_disp:[],zm:[],u_zm:[],bdm:[],u_bdm:[],
     mlt:[],stlt:[],cdm:[],cdsm:[],stcm:[],
     u_mlt:[],u_stlt:[],u_cdm:[],u_cdsm:[],u_stcm:[],
     stdm:[],mxdl:[],ltdl:[],u_stdm:[],u_mxdl:[],u_ltdl:[],
-    rt_cols:0,
+    rt_cols:1,
   };
 }
 
@@ -2085,7 +2090,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(grandSrc,grp)))
     ));
 
-    return { grand, hdr1, hdr2, bodyRows };
+    return { grand, hdr1, hdr2, bodyRows, stateData, zoneData };
   }, [stm, univ, cm, cdm, csm_data, cdsm_data, maps, filters, expandedGrps, openZone, openState, openCity, srcGroups, hasCities, hasDealers, hasCitySrc, hasDealerSrc, cityIndexMap, getLR, viewerMode]);
 
   const stateSummaryAgg = useMemo(() => {
@@ -2107,17 +2112,46 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     );
   }, [stm, univ, maps, filters, getLR]);
 
+  function exportStateSourceCsv(agg, filename) {
+    const hdr = ['State', 'Leads', 'Retail', 'L2R%'];
+    const rows = [hdr];
+    const entries = Object.entries(agg.dimAggs).sort((a,b) => b[1].total.l - a[1].total.l);
+    for (const [dk, da] of entries)
+      rows.push([dk, da.total.l, da.total.r, +da.total.l2r.toFixed(1)]);
+    rows.push(['Grand Total', agg.grand.l, agg.grand.r, +agg.grand.l2r.toFixed(1)]);
+    exportCsv(rows, filename);
+  }
+
   return ce('div', { className:'fade-up' },
     stateSummaryAgg && stateSummaryAgg.grand.l > 0 &&
       ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
-        ce('div', { className:'section-title', style:{marginBottom:10} }, '∑ All Months — State Summary'),
+        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+          ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — State Summary'),
+          ce(CsvBtn, { onClick:()=>exportStateSourceCsv(stateSummaryAgg,'Hero_StateSource_AllMonths.csv') })
+        ),
         ce(DimGrid, { agg:stateSummaryAgg, srcGroups, dimLabel:'State', expandedGrps, onToggleGrp, viewerMode })
       ),
     months.map(M => {
       const grid = renderMonthGrid(M);
       if (!grid || (grid.grand.l === 0 && grid.grand.r === 0)) return null;
       return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
-        ce('div', { className:'section-title', style:{marginBottom:10} }, 'State × Source — ' + M),
+        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+          ce('div', { className:'section-title', style:{marginBottom:0} }, 'State × Source — ' + M),
+          ce(CsvBtn, { onClick:()=>{
+            const aoa=[['Zone','State','Leads','Retail','L2R%']];
+            const ZONE_ORDER=['North','West','South','East','Central','Northeast','Other'];
+            for(const zone of ZONE_ORDER){
+              const zd=grid.zoneData?.get(zone); if(!zd||!zd.total[0])continue;
+              for(const st of(zd.states||[]).sort()){
+                const sd=grid.stateData?.get(st); if(!sd)continue;
+                const l=sd.total[0],r=sd.total[1];
+                aoa.push([zone,st,l,r,l>0?+(r/l*100).toFixed(1):0]);
+              }
+            }
+            aoa.push(['','Grand Total',grid.grand.l,grid.grand.r,grid.grand.l>0?+(grid.grand.r/grid.grand.l*100).toFixed(1):0]);
+            exportCsv(aoa,`Hero_StateSource_${M.replace(/[^a-z0-9]/gi,'_')}.csv`);
+          }})
+        ),
         ce('div', { className:'scroll-x' },
           ce('table', null,
             ce('thead', null,
@@ -2569,7 +2603,15 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
     monthlyAggs.map(({M,agg}) => agg ?
       ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
         ce(CrossTabGrid, { agg, rowLabel:'State', colLabel:'Model', rtCols:data.rt_cols,
-          title:'State × Model — '+M, onExport:()=>exportAgg(agg,M) })
+          title:'State × Model — '+M, onExport:()=>exportAgg(agg,M),
+          onCsvExport:()=>{
+            const {colKeys,rowKeys,rowAggs,grand}=agg;
+            const aoa=[['State','Leads','Retail','Contrib%','L2R%',...colKeys.flatMap(ck=>[ck+' L',ck+' R',ck+' L2R%'])]];
+            rowKeys.forEach(rk=>{const da=rowAggs[rk];const r=[rk,da.total.l,da.total.r,grand.l>0?+(da.total.l/grand.l*100).toFixed(1):0,+da.total.l2r.toFixed(1)];colKeys.forEach(ck=>{const ca=da.colAggs[ck]||{l:0,r:0,l2r:0};r.push(ca.l,ca.r,+ca.l2r.toFixed(1));});aoa.push(r);});
+            const gt=['Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];colKeys.forEach(ck=>{let tL=0,tR=0;rowKeys.forEach(rk=>{const ca=(rowAggs[rk].colAggs[ck]||{l:0,r:0});tL+=ca.l;tR+=ca.r;});gt.push(tL,tR,tL>0?+(tR/tL*100).toFixed(1):0);});aoa.push(gt);
+            exportCsv(aoa,`Hero_StateModel_${M.replace(/[^a-z0-9]/gi,'_')}.csv`);
+          }
+        })
       ) : null
     )
   );
@@ -2658,180 +2700,758 @@ const tdS = {padding:'7px 10px', textAlign:'right', fontSize:11, fontFamily:'DM 
 
 const PivotTab = React.memo(function PivotTab({ data, filters, months, RT }) {
   const { maps } = data;
-  const univ = data.univ || [];
-  const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
+  const COL_SEP = '\x00';
+
+  const [rowDims,    setRowDims]    = useState(['mdl']);
+  const [colDims,    setColDims]    = useState(['lm']);
+  const [metrics,    setMetrics]    = useState(['leads']);
+  const [sortBy,     setSortBy]     = useState('__total__');
+  const [sortDir,    setSortDir]    = useState('desc');
+  const [topN,       setTopN]       = useState(20);
+  const [collapsed,  setCollapsed]  = useState(new Set());
+  const [addRowOpen, setAddRowOpen] = useState(false);
+  const [addColOpen, setAddColOpen] = useState(false);
 
   const DIMS = [
-    { id:'lt',  label:'Lead Type', arrKey:'lt',  pos:3 },
-    { id:'src', label:'Source',    arrKey:'src', pos:1 },
-    { id:'mdl', label:'Model',     arrKey:'mdl', pos:0 },
-    { id:'st',  label:'State',     arrKey:'st',  pos:2 },
-    { id:'lm',  label:'Month',     arrKey:'lm',  pos:4 },
+    { key:'lm',   label:'Month'     },
+    { key:'mdl',  label:'Model'     },
+    { key:'src',  label:'Source'    },
+    { key:'st',   label:'State'     },
+    { key:'lt',   label:'Lead Type' },
+    { key:'city', label:'City'      },
   ];
 
-  const [rowDim, setRowDim] = useState('lt');
-  const [colDim, setColDim] = useState('src');
+  const METRICS = [
+    { key:'leads',  label:'Leads'    },
+    { key:'ret',    label:'Retails'  },
+    { key:'retpct', label:'Retail %' },
+    { key:'dms',    label:'DMS'      },
+    { key:'call',   label:'Call-Out' },
+  ];
 
-  const pivot = useMemo(() => {
-    const rowDef = DIMS.find(d => d.id === rowDim);
-    const colDef = DIMS.find(d => d.id === colDim);
-    const rowArr = maps[rowDef.arrKey];
-    const colArr = maps[colDef.arrKey];
+  const ALL_MATS = [
+    { key:'sm',   dims:['src','lm']                   },
+    { key:'mm',   dims:['mdl','src','lm']            },
+    { key:'stm',  dims:['st','src','lm']             },
+    { key:'ltm',  dims:['lt','src','lm']             },
+    { key:'mxst', dims:['mdl','st','lm']             },
+    { key:'cm',   dims:['city','lm']                  },
+    { key:'csm',  dims:['city','src','lm']           },
+    { key:'cxm',  dims:['city','mdl','lm']           },
+    { key:'univ', dims:['mdl','src','st','lt','lm'] },
+  ];
 
-    const allM = !filters.months || filters.months.size === 0;
-    const allS = !filters.sources || filters.sources.size === 0;
-    const univF = makeUnivFilter(filters);
-
-    const cells = new Map();
-    const rowTotals = new Map();
-    const colTotals = new Map();
-    let grandL = 0, grandR = 0;
-
-    for (const row of univ) {
-      const m = maps.lm[row[4]];
-      if (!allM && !filters.months.has(m)) continue;
-      const src = maps.src[row[1]];
-      if (!allS && !filters.sources.has(src)) continue;
-      if (univF && !univF(row, maps)) continue;
-
-      const rk = rowArr[row[rowDef.pos]];
-      const ck = colArr[row[colDef.pos]];
-      if (!rk || !ck) continue;
-
-      const [l, r] = getLR(row);
-      grandL += l; grandR += r;
-
-      const rt = rowTotals.get(rk) || [0,0]; rt[0]+=l; rt[1]+=r; rowTotals.set(rk, rt);
-      const ct = colTotals.get(ck) || [0,0]; ct[0]+=l; ct[1]+=r; colTotals.set(ck, ct);
-
-      if (!cells.has(rk)) cells.set(rk, new Map());
-      const cm = cells.get(rk);
-      const cv = cm.get(ck) || [0,0]; cv[0]+=l; cv[1]+=r; cm.set(ck, cv);
-    }
-
-    return { cells, rowTotals, colTotals, grandL, grandR };
-  }, [univ, maps, filters, rowDim, colDim, getLR]);
-
-  const sortedRows = useMemo(() => {
-    const entries = [...pivot.rowTotals.entries()].sort((a,b) => b[1][0]-a[1][0]);
-    if (rowDim === 'lm') return entries.sort((a,b) => heroMonthOrder(b[0])-heroMonthOrder(a[0])).map(([k])=>k);
-    return entries.map(([k])=>k);
-  }, [pivot.rowTotals, rowDim]);
-
-  const sortedCols = useMemo(() => {
-    const entries = [...pivot.colTotals.entries()].sort((a,b) => b[1][0]-a[1][0]);
-    if (colDim === 'lm') return entries.sort((a,b) => heroMonthOrder(b[0])-heroMonthOrder(a[0])).map(([k])=>k);
-    return entries.map(([k])=>k);
-  }, [pivot.colTotals, colDim]);
-
-  function exportPivotCsv() {
-    const hdr = ['', ...sortedCols.flatMap(c => [c+' Leads', c+' Retail', c+' L2R%']), 'Total Leads', 'Total Retail', 'Total L2R%'];
-    const aoa = [hdr];
-    for (const rk of sortedRows) {
-      const rc = pivot.cells.get(rk) || new Map();
-      const rt = pivot.rowTotals.get(rk) || [0,0];
-      const row = [rk];
-      for (const ck of sortedCols) {
-        const cv = rc.get(ck) || [0,0];
-        row.push(cv[0], cv[1], cv[0]>0?(cv[1]/cv[0]*100).toFixed(1)+'%':'—');
+  const matConfig = useMemo(() => {
+    const needed = [...rowDims, ...colDims];
+    if (new Set(needed).size < needed.length) return null;
+    const filterDims = [];
+    if (filters.models    && filters.models.size    > 0) filterDims.push('mdl');
+    if (filters.states    && filters.states.size    > 0) filterDims.push('st');
+    if (filters.leadTypes && filters.leadTypes.size > 0) filterDims.push('lt');
+    if (filters.cities    && filters.cities.size    > 0) filterDims.push('city');
+    const allNeeded = [...new Set([...needed, ...filterDims])];
+    let best = null, bestExtra = 99;
+    for (const m of ALL_MATS) {
+      if (!allNeeded.every(d => m.dims.includes(d))) continue;
+      const extra = m.dims.filter(d => !needed.includes(d) && d !== 'lm').length;
+      if (extra < bestExtra || (extra === bestExtra && m.dims.length < (best?.dims.length ?? 99))) {
+        bestExtra = extra; best = m;
       }
-      row.push(rt[0], rt[1], rt[0]>0?(rt[1]/rt[0]*100).toFixed(1)+'%':'—');
-      aoa.push(row);
     }
-    const gtRow = ['∑ Grand Total'];
-    for (const ck of sortedCols) { const ct=pivot.colTotals.get(ck)||[0,0]; gtRow.push(ct[0],ct[1],ct[0]>0?(ct[1]/ct[0]*100).toFixed(1)+'%':'—'); }
-    gtRow.push(pivot.grandL, pivot.grandR, pivot.grandL>0?(pivot.grandR/pivot.grandL*100).toFixed(1)+'%':'—');
-    aoa.push(gtRow);
-    exportCsv(aoa, 'Hero_Pivot_Table.csv');
+    return best;
+  }, [rowDims, colDims, filters]);
+
+  const rawMatrix = useMemo(() => {
+    if (!matConfig) return [];
+    return data[matConfig.key] || [];
+  }, [data, matConfig]);
+
+  const filterSets = useMemo(() => {
+    if (!matConfig) return {};
+    const { dims } = matConfig;
+    const mk = (dim, fSet, arr) => {
+      if (!dims.includes(dim) || !fSet || fSet.size === 0) return null;
+      const s = new Set();
+      (arr || []).forEach((v, i) => { if (fSet.has(v)) s.add(i); });
+      return s.size ? s : null;
+    };
+    const sets = {};
+    const a = mk('lm',  filters.months,    maps.lm);  if (a) sets.lm  = a;
+    const b = mk('src', filters.sources,   maps.src); if (b) sets.src = b;
+    const c = mk('st',  filters.states,    maps.st);  if (c) sets.st  = c;
+    const d = mk('mdl', filters.models,    maps.mdl); if (d) sets.mdl = d;
+    const e = mk('lt',  filters.leadTypes, maps.lt);  if (e) sets.lt  = e;
+    if (dims.includes('city') && filters.cities?.size > 0) {
+      const cs = new Set();
+      (maps.city || []).forEach((v, i) => { if (filters.cities.has(v)) cs.add(i); });
+      if (cs.size) sets.city = cs;
+    }
+    return sets;
+  }, [matConfig, filters, maps]);
+
+  function getMetricVal(vals, m) {
+    if (!vals) return 0;
+    if (m === 'leads')  return vals[0] || 0;
+    if (m === 'ret')    return vals[1] || 0;
+    if (m === 'retpct') return vals[0] > 0 ? (vals[1] / vals[0]) * 100 : 0;
+    if (m === 'dms')    return vals[2] || 0;
+    if (m === 'call')   return vals[3] || 0;
+    return 0;
   }
 
-  const rowLabel = DIMS.find(d=>d.id===rowDim)?.label || rowDim;
-  const colLabel = DIMS.find(d=>d.id===colDim)?.label || colDim;
-  const dimOpts = DIMS.filter(d=>d.id!==colDim);
-  const colOpts = DIMS.filter(d=>d.id!==rowDim);
+  function fmtV(vals, m) {
+    const v = getMetricVal(vals, m);
+    if (m === 'retpct') return v > 0 ? v.toFixed(1) + '%' : '—';
+    return v === 0 ? '—' : v.toLocaleString();
+  }
 
-  return ce('div', {className:'fade-up'},
-    ce('div', {className:'card', style:{padding:'16px 18px', marginBottom:14}},
-      ce('div', {style:{display:'flex', alignItems:'center', flexWrap:'wrap', gap:12, marginBottom:12}},
-        ce('div', {className:'section-title', style:{marginBottom:0, flex:1}}, 'Pivot Table'),
-        ce('label', {style:{fontSize:11, color:'#64748B', display:'flex', alignItems:'center', gap:6}},
-          'Rows:',
-          ce('select', {value:rowDim, onChange:e=>setRowDim(e.target.value),
-            style:{fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid #E2E8F0', background:'#fff', color:'#0f172a'}},
-            dimOpts.map(d=>ce('option',{key:d.id,value:d.id},d.label))
-          )
-        ),
-        ce('label', {style:{fontSize:11, color:'#64748B', display:'flex', alignItems:'center', gap:6}},
-          'Columns:',
-          ce('select', {value:colDim, onChange:e=>setColDim(e.target.value),
-            style:{fontSize:11, padding:'3px 8px', borderRadius:6, border:'1px solid #E2E8F0', background:'#fff', color:'#0f172a'}},
-            colOpts.map(d=>ce('option',{key:d.id,value:d.id},d.label))
-          )
-        ),
-        ce('button', {onClick:exportPivotCsv,
-          style:{padding:'5px 12px', fontSize:11, fontWeight:700, border:'1px solid #E2E8F0', borderRadius:6, background:'#F8FAFC', color:'#374151', cursor:'pointer', whiteSpace:'nowrap', fontFamily:'inherit'}},
-          '\u2193 CSV'
-        )
-      ),
-      pivot.grandL === 0
-        ? ce('div', {style:{color:'#94A3B8',fontSize:12,padding:20,textAlign:'center'}}, 'No data for current filters.')
-        : ce('div', {className:'scroll-x'},
-            ce('table', {style:{borderCollapse:'collapse', fontSize:11, minWidth:400}},
-              ce('thead', null,
-                ce('tr', null,
-                  ce('th', {style:{...thS, minWidth:140, position:'sticky', left:0, zIndex:1}}, rowLabel + ' \\ ' + colLabel),
-                  ...sortedCols.map(ck => ce('th', {key:ck, colSpan:3, style:{...thS, textAlign:'center', borderLeft:'2px solid #FDBA74', whiteSpace:'nowrap', minWidth:150}}, ck)),
-                  ce('th', {colSpan:3, style:{...thS, textAlign:'center', borderLeft:'2px solid #7C2D12', background:'linear-gradient(90deg,#7C2D12,#9A3412)', color:'#fff', minWidth:150}}, '\u03a3 Total')
-                ),
-                ce('tr', null,
-                  ce('th', {style:{...thS, position:'sticky', left:0, zIndex:1}}, ''),
-                  ...sortedCols.flatMap(ck => [
-                    ce('th',{key:ck+'L',style:{...thS,borderLeft:'2px solid #FDBA74'}},'Leads'),
-                    ce('th',{key:ck+'R',style:{...thS,color:'#B71C1C'}},'Retail'),
-                    ce('th',{key:ck+'P',style:{...thS,color:'#E65100'}},'L2R%'),
-                  ]),
-                  ce('th',{style:{...thS,borderLeft:'2px solid #7C2D12',background:'#7C2D12',color:'#fff'}},'Leads'),
-                  ce('th',{style:{...thS,background:'#7C2D12',color:'#fff'}},'Retail'),
-                  ce('th',{style:{...thS,background:'#7C2D12',color:'#fff'}},'L2R%'),
-                )
-              ),
-              ce('tbody', null,
-                ...sortedRows.map((rk,i) => {
-                  const rc = pivot.cells.get(rk) || new Map();
-                  const rt = pivot.rowTotals.get(rk) || [0,0];
-                  return ce('tr', {key:rk, style:{background:i%2===0?'#fff':'#FFF7ED'}},
-                    ce('td', {style:{...tdS, fontWeight:600, position:'sticky', left:0, background:i%2===0?'#fff':'#FFF7ED', zIndex:1}}, rk),
-                    ...sortedCols.flatMap(ck => {
-                      const cv = rc.get(ck)||[0,0];
-                      return [
-                        ce('td',{key:ck+'L',style:{...tdS,borderLeft:'2px solid #FDBA74'}},Nf(cv[0])||'—'),
-                        ce('td',{key:ck+'R',style:{...tdS,color:'#EA580C',fontWeight:cv[1]>0?700:400}},cv[1]>0?Nf(cv[1]):'—'),
-                        ce('td',{key:ck+'P',style:{...tdS,color:'#D97706'}},cv[0]>0?Pf(cv[1]/cv[0]*100):'—'),
-                      ];
-                    }),
-                    ce('td',{style:{...tdS,borderLeft:'2px solid #9A3412',fontWeight:700,background:'#FEF3C7'}},Nf(rt[0])),
-                    ce('td',{style:{...tdS,fontWeight:700,color:'#EA580C',background:'#FEF3C7'}},rt[1]>0?Nf(rt[1]):'—'),
-                    ce('td',{style:{...tdS,fontWeight:700,color:'#D97706',background:'#FEF3C7'}},rt[0]>0?Pf(rt[1]/rt[0]*100):'—'),
-                  );
-                }),
-                ce('tr', {className:'total-row'},
-                  ce('td', {className:'label', style:{position:'sticky',left:0,zIndex:1}}, '\u03a3 Grand Total'),
-                  ...sortedCols.flatMap(ck => {
-                    const ct = pivot.colTotals.get(ck)||[0,0];
-                    return [
-                      ce('td',{key:ck+'L',style:{borderLeft:'2px solid rgba(255,255,255,.3)',padding:'7px 10px'}},Nf(ct[0])),
-                      ce('td',{key:ck+'R',style:{padding:'7px 10px'}},ct[1]>0?Nf(ct[1]):'—'),
-                      ce('td',{key:ck+'P',style:{padding:'7px 10px'}},ct[0]>0?Pf(ct[1]/ct[0]*100):'—'),
-                    ];
-                  }),
-                  ce('td',{style:{borderLeft:'2px solid rgba(255,255,255,.3)',padding:'7px 10px',fontWeight:800}},Nf(pivot.grandL)),
-                  ce('td',{style:{padding:'7px 10px',fontWeight:800}},pivot.grandR>0?Nf(pivot.grandR):'—'),
-                  ce('td',{style:{padding:'7px 10px',fontWeight:800}},pivot.grandL>0?Pf(pivot.grandR/pivot.grandL*100):'—'),
-                )
+  function rowTotal(cMap, m) {
+    let tl = 0, tr = 0;
+    for (const v of cMap.values()) { tl += v[0]; tr += v[1]; }
+    if (m === 'retpct') return tl > 0 ? (tr / tl) * 100 : 0;
+    let t = 0;
+    for (const v of cMap.values()) t += getMetricVal(v, m);
+    return t;
+  }
+
+  function fmtTotal(cMap, m) {
+    const v = rowTotal(cMap, m);
+    if (m === 'retpct') return v > 0 ? v.toFixed(1) + '%' : '—';
+    return v === 0 ? '—' : v.toLocaleString();
+  }
+
+  function accVals(tgt, cKey, row, nDims) {
+    if (!tgt.has(cKey)) tgt.set(cKey, [0, 0, 0, 0]);
+    const c = tgt.get(cKey);
+    c[0] += row[nDims]     || 0;
+    c[1] += row[nDims + 1] || 0;
+    c[2] += row[nDims + 2] || 0;
+    c[3] += row[nDims + 3] || 0;
+  }
+
+  const pivotResult = useMemo(() => {
+    if (!matConfig || rawMatrix.length === 0) return null;
+    const { dims } = matConfig;
+    const nDims = dims.length;
+    const rPos0 = dims.indexOf(rowDims[0]);
+    const rPos1 = rowDims[1] ? dims.indexOf(rowDims[1]) : -1;
+    const cPos0 = dims.indexOf(colDims[0]);
+    const cPos1 = colDims[1] ? dims.indexOf(colDims[1]) : -1;
+    const lbl   = (dim, idx) => (maps[dim] || [])[idx] ?? '#' + idx;
+    const tbl   = new Map();
+    const colSet = new Set();
+    for (const row of rawMatrix) {
+      let ok = true;
+      for (const [dim, allowed] of Object.entries(filterSets)) {
+        const pos = dims.indexOf(dim);
+        if (pos < 0) continue;
+        if (!allowed.has(row[pos])) { ok = false; break; }
+      }
+      if (!ok) continue;
+      const r1 = lbl(rowDims[0], row[rPos0]);
+      const r2 = rPos1 >= 0 ? lbl(rowDims[1], row[rPos1]) : null;
+      const c0 = lbl(colDims[0], row[cPos0]);
+      const ck = cPos1 >= 0 ? c0 + COL_SEP + lbl(colDims[1], row[cPos1]) : c0;
+      colSet.add(ck);
+      if (!tbl.has(r1)) tbl.set(r1, { sub: new Map(), children: new Map() });
+      const e = tbl.get(r1);
+      accVals(e.sub, ck, row, nDims);
+      if (r2 !== null) {
+        if (!e.children.has(r2)) e.children.set(r2, new Map());
+        accVals(e.children.get(r2), ck, row, nDims);
+      }
+    }
+    return { tbl, colLabels: [...colSet] };
+  }, [rawMatrix, matConfig, rowDims, colDims, filterSets, maps]);
+
+  const pm = metrics[0] || 'leads';
+
+  const orderedCols = useMemo(() => {
+    if (!pivotResult) return [];
+    const { tbl, colLabels } = pivotResult;
+    if (colDims.length === 1) {
+      if (colDims[0] === 'lm') return [...colLabels].sort((a, b) => heroMonthOrder(a) - heroMonthOrder(b));
+      const cTot = {};
+      for (const { sub } of tbl.values())
+        for (const [c, v] of sub) cTot[c] = (cTot[c] || 0) + getMetricVal(v, pm);
+      return [...colLabels].sort((a, b) => (cTot[b] || 0) - (cTot[a] || 0));
+    }
+    const groups = new Map();
+    for (const ck of colLabels) {
+      const sep = ck.indexOf(COL_SEP);
+      const c0 = ck.slice(0, sep), c1 = ck.slice(sep + 1);
+      if (!groups.has(c0)) groups.set(c0, new Set());
+      groups.get(c0).add(c1);
+    }
+    let c0vals = [...groups.keys()];
+    if (colDims[0] === 'lm') { c0vals.sort((a, b) => heroMonthOrder(a) - heroMonthOrder(b)); }
+    else {
+      const c0Tot = {};
+      for (const { sub } of tbl.values())
+        for (const [ck, v] of sub) {
+          const c0 = ck.slice(0, ck.indexOf(COL_SEP));
+          c0Tot[c0] = (c0Tot[c0] || 0) + getMetricVal(v, pm);
+        }
+      c0vals.sort((a, b) => (c0Tot[b] || 0) - (c0Tot[a] || 0));
+    }
+    const result = [];
+    for (const c0 of c0vals) {
+      let c1vals = [...groups.get(c0)];
+      if (colDims[1] === 'lm') { c1vals.sort((a, b) => heroMonthOrder(a) - heroMonthOrder(b)); }
+      else {
+        const c1Tot = {};
+        for (const { sub } of tbl.values())
+          for (const [ck, v] of sub) {
+            const sep = ck.indexOf(COL_SEP);
+            if (ck.slice(0, sep) === c0) {
+              const c1 = ck.slice(sep + 1);
+              c1Tot[c1] = (c1Tot[c1] || 0) + getMetricVal(v, pm);
+            }
+          }
+        c1vals.sort((a, b) => (c1Tot[b] || 0) - (c1Tot[a] || 0));
+      }
+      for (const c1 of c1vals) result.push(c0 + COL_SEP + c1);
+    }
+    return result;
+  }, [pivotResult, colDims, pm]);
+
+  const colGroups = useMemo(() => {
+    if (colDims.length < 2) return [];
+    const groups = [];
+    let i = 0;
+    while (i < orderedCols.length) {
+      const c0 = orderedCols[i].slice(0, orderedCols[i].indexOf(COL_SEP));
+      let span = 0;
+      while (i < orderedCols.length && orderedCols[i].slice(0, orderedCols[i].indexOf(COL_SEP)) === c0) { span++; i++; }
+      groups.push({ c0, span });
+    }
+    return groups;
+  }, [orderedCols, colDims]);
+
+  const sortedRows = useMemo(() => {
+    if (!pivotResult) return [];
+    const rows = [];
+    for (const [label, entry] of pivotResult.tbl) {
+      const total = rowTotal(entry.sub, pm);
+      rows.push({ label, entry, total });
+    }
+    rows.sort((a, b) => {
+      let av, bv;
+      if (sortBy === '__total__') { av = a.total; bv = b.total; }
+      else if (sortBy === '__label__') { av = a.label; bv = b.label; }
+      else { av = getMetricVal(a.entry.sub.get(sortBy), pm); bv = getMetricVal(b.entry.sub.get(sortBy), pm); }
+      if (av === bv) return 0;
+      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+      return sortDir === 'asc' ? av - bv : bv - av;
+    });
+    return topN > 0 ? rows.slice(0, topN) : rows;
+  }, [pivotResult, pm, sortBy, sortDir, topN]);
+
+  const grandTotals = useMemo(() => {
+    if (!pivotResult) return { colVals: {}, gl: 0, gr: 0 };
+    const colVals = {};
+    let gl = 0, gr = 0;
+    for (const { sub } of pivotResult.tbl.values()) {
+      for (const [c, v] of sub) {
+        if (!colVals[c]) colVals[c] = [0, 0, 0, 0];
+        for (let i = 0; i < 4; i++) colVals[c][i] += v[i];
+        gl += v[0]; gr += v[1];
+      }
+    }
+    return { colVals, gl, gr };
+  }, [pivotResult]);
+
+  const unapplied = useMemo(() => {
+    if (!matConfig) return [];
+    const ds  = new Set(matConfig.dims);
+    const all = new Set([...rowDims, ...colDims]);
+    const out = [];
+    if (filters.sources?.size > 0 && !ds.has('src') && !all.has('src')) out.push('Source');
+    if (filters.states?.size  > 0 && !ds.has('st')  && !all.has('st'))  out.push('State');
+    if (filters.models?.size  > 0 && !ds.has('mdl') && !all.has('mdl')) out.push('Model');
+    return out;
+  }, [matConfig, filters, rowDims, colDims]);
+
+  function toggleMetric(key) {
+    setMetrics(prev =>
+      prev.includes(key)
+        ? prev.length > 1 ? prev.filter(k => k !== key) : prev
+        : [...prev, key]
+    );
+  }
+
+  function addRowDim(key) {
+    if (rowDims.includes(key) || colDims.includes(key)) return;
+    setRowDims([...rowDims, key]);
+    setAddRowOpen(false);
+    setCollapsed(new Set());
+  }
+
+  function removeRowDim(idx) {
+    if (rowDims.length === 1) return;
+    setRowDims(rowDims.filter((_, i) => i !== idx));
+    setCollapsed(new Set());
+  }
+
+  function addColDim(key) {
+    if (colDims.includes(key) || rowDims.includes(key)) return;
+    setColDims([...colDims, key]);
+    setAddColOpen(false);
+    setSortBy('__total__');
+  }
+
+  function removeColDim(idx) {
+    if (colDims.length === 1) return;
+    setColDims(colDims.filter((_, i) => i !== idx));
+    setSortBy('__total__');
+  }
+
+  function handleExport() {
+    if (!pivotResult || sortedRows.length === 0) return;
+    const hasR2  = rowDims.length > 1;
+    const hasC2  = colDims.length > 1;
+    const dimLbl = k => DIMS.find(d => d.key === k)?.label || k;
+    const mLbl   = k => METRICS.find(x => x.key === k)?.label || k;
+    const colLabel = ck => hasC2
+      ? ck.slice(0, ck.indexOf(COL_SEP)) + ' — ' + ck.slice(ck.indexOf(COL_SEP) + 1)
+      : ck;
+    const hdr = [dimLbl(rowDims[0])];
+    if (hasR2) hdr.push(dimLbl(rowDims[1]));
+    for (const ck of orderedCols)
+      for (const m of metrics)
+        hdr.push(metrics.length > 1 ? `${colLabel(ck)} — ${mLbl(m)}` : colLabel(ck));
+    for (const m of metrics)
+      hdr.push(metrics.length > 1 ? `TOTAL — ${mLbl(m)}` : 'TOTAL');
+    const aoa = [hdr];
+    const pushCells = (arr, cMap) => {
+      for (const ck of orderedCols)
+        for (const m of metrics) {
+          const v = getMetricVal(cMap.get(ck), m);
+          arr.push(m === 'retpct' ? +(v.toFixed(2)) : v);
+        }
+      for (const m of metrics) {
+        const t = rowTotal(cMap, m);
+        arr.push(m === 'retpct' ? +(t.toFixed(2)) : t);
+      }
+    };
+    for (const { label, entry } of sortedRows) {
+      if (!hasR2) { const r = [label]; pushCells(r, entry.sub); aoa.push(r); }
+      else {
+        const rSub = [label, 'Subtotal']; pushCells(rSub, entry.sub); aoa.push(rSub);
+        for (const [r2Lbl, cMap] of entry.children) {
+          const rChild = ['', r2Lbl]; pushCells(rChild, cMap); aoa.push(rChild);
+        }
+      }
+    }
+    const gtRow = hasR2 ? ['GRAND TOTAL', ''] : ['GRAND TOTAL'];
+    for (const ck of orderedCols)
+      for (const m of metrics) {
+        const v = getMetricVal(grandTotals.colVals[ck], m);
+        gtRow.push(m === 'retpct' ? +(v.toFixed(2)) : v);
+      }
+    for (const m of metrics) {
+      let t = 0;
+      if (m === 'retpct') t = grandTotals.gl > 0 ? +(grandTotals.gr/grandTotals.gl*100).toFixed(2) : 0;
+      else { for (const { sub } of pivotResult.tbl.values()) for (const v of sub.values()) t += getMetricVal(v, m); t = +t.toFixed(2); }
+      gtRow.push(t);
+    }
+    aoa.push(gtRow);
+    exportCsv(aoa, `Hero_Pivot_${Date.now()}.csv`);
+  }
+
+  const hasR2       = rowDims.length > 1;
+  const hasC2       = colDims.length > 1;
+  const multiMetric = metrics.length > 1;
+  const allDims     = [...rowDims, ...colDims];
+  const unsupported      = new Set(allDims).size < allDims.length || !matConfig;
+  const awaitingPipeline = !unsupported && !(data[matConfig?.key]);
+  const noData           = !unsupported && !awaitingPipeline && (!pivotResult || pivotResult.tbl.size === 0);
+
+  const selSt = { padding:'6px 10px', fontSize:13, border:'1px solid #CBD5E1', borderRadius:8,
+                  background:'#fff', color:'#0f172a', fontFamily:'inherit', cursor:'pointer' };
+
+  const makePill = (dim, onRemove, canRemove) => {
+    const label = DIMS.find(d => d.key === dim)?.label || dim;
+    return ce('span', { key: dim,
+      style:{ display:'inline-flex', alignItems:'center', gap:3, padding:'4px 10px',
+              borderRadius:20, fontSize:12, fontWeight:600, background:'#9A3412', color:'#fff' }
+    },
+      label,
+      canRemove && ce('span', {
+        onClick: e => { e.stopPropagation(); onRemove(); },
+        style:{ marginLeft:2, cursor:'pointer', opacity:0.75, fontSize:15, lineHeight:1 }
+      }, '×')
+    );
+  };
+
+  const addPillBtn = onClick =>
+    ce('button', { onClick,
+      style:{ padding:'4px 10px', borderRadius:20, fontSize:12, fontWeight:600,
+              cursor:'pointer', border:'1.5px dashed #94A3B8',
+              background:'#fff', color:'#64748B' }
+    }, '+ Add');
+
+  const dimDropdown = (items, onSelect) =>
+    ce('div', { style:{ position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:20,
+        background:'#fff', border:'1px solid #E2E8F0', borderRadius:8,
+        boxShadow:'0 4px 16px rgba(0,0,0,0.12)', minWidth:140, overflow:'hidden' } },
+      items.map(d => ce('div', {
+        key: d.key, onClick: () => onSelect(d.key),
+        style:{ padding:'8px 14px', fontSize:13, cursor:'pointer', color:'#0f172a' },
+        onMouseEnter: e => e.currentTarget.style.background = '#F1F5F9',
+        onMouseLeave: e => e.currentTarget.style.background = '',
+      }, d.label))
+    );
+
+  const metricPill = m => {
+    const active = metrics.includes(m.key);
+    return ce('span', { key: m.key, onClick: () => toggleMetric(m.key),
+      style:{ display:'inline-flex', alignItems:'center', padding:'4px 10px',
+              borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer', userSelect:'none',
+              border: active ? '1.5px solid #9A3412' : '1.5px solid #CBD5E1',
+              background: active ? '#9A3412' : '#fff',
+              color: active ? '#fff' : '#475569' }
+    }, m.label);
+  };
+
+  return ce('div', { style:{ padding:'0 4px' } },
+
+    /* Config bar */
+    ce('div', { style:{ display:'flex', gap:14, flexWrap:'wrap', alignItems:'flex-start',
+        padding:'16px 18px', background:'#F8FAFC', borderRadius:12,
+        border:'1px solid #E2E8F0', marginBottom:14 } },
+
+      /* ROWS */
+      ce('div', { style:{ minWidth:80 } },
+        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Rows'),
+        ce('div', { style:{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' } },
+          rowDims.map((dim, idx) => makePill(dim, () => removeRowDim(idx), rowDims.length > 1)),
+          rowDims.length < 2 &&
+            ce('div', { style:{ position:'relative' } },
+              addPillBtn(() => setAddRowOpen(o => !o)),
+              addRowOpen && dimDropdown(
+                DIMS.filter(d => !rowDims.includes(d.key) && !colDims.includes(d.key)),
+                addRowDim
               )
             )
+        )
+      ),
+
+      ce('div', { style:{color:'#CBD5E1',fontSize:22,alignSelf:'center',fontWeight:300,paddingTop:18} }, '×'),
+
+      /* COLUMNS */
+      ce('div', { style:{ minWidth:80 } },
+        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Columns'),
+        ce('div', { style:{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' } },
+          colDims.map((dim, idx) => makePill(dim, () => removeColDim(idx), colDims.length > 1)),
+          colDims.length < 2 &&
+            ce('div', { style:{ position:'relative' } },
+              addPillBtn(() => setAddColOpen(o => !o)),
+              addColOpen && dimDropdown(
+                DIMS.filter(d => !colDims.includes(d.key) && !rowDims.includes(d.key)),
+                addColDim
+              )
+            )
+        )
+      ),
+
+      ce('div', { style:{width:1,height:40,background:'#E2E8F0',alignSelf:'center',marginTop:20} }),
+
+      /* VALUES */
+      ce('div', null,
+        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Values'),
+        ce('div', { style:{ display:'flex', gap:6, flexWrap:'wrap' } },
+          METRICS.map(metricPill)
+        )
+      ),
+
+      ce('div', { style:{width:1,height:40,background:'#E2E8F0',alignSelf:'center',marginTop:20} }),
+
+      /* SORT */
+      ce('div', null,
+        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Sort By'),
+        ce('select', { value:sortBy, onChange:e=>setSortBy(e.target.value), style:selSt },
+          ce('option',{value:'__total__'},'Total'),
+          ce('option',{value:'__label__'},'Row Label'),
+          ...(!hasC2 ? orderedCols.slice(0,8).map(c => ce('option',{key:c,value:c}, c.length>15?c.slice(0,14)+'…':c)) : [])
+        )
+      ),
+
+      ce('div', null,
+        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Order'),
+        ce('select', { value:sortDir, onChange:e=>setSortDir(e.target.value), style:selSt },
+          ce('option',{value:'desc'},'↓  High → Low'),
+          ce('option',{value:'asc' },'↑  Low → High'),
+        )
+      ),
+
+      ce('div', null,
+        ce('div', { style:{fontSize:10,fontWeight:700,color:'#64748B',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6} }, 'Show'),
+        ce('select', { value:topN, onChange:e=>setTopN(+e.target.value), style:selSt },
+          ce('option',{value:10 },'Top 10'),
+          ce('option',{value:20 },'Top 20'),
+          ce('option',{value:50 },'Top 50'),
+          ce('option',{value:100},'Top 100'),
+          ce('option',{value:0  },'All rows'),
+        )
+      ),
+
+      !unsupported && !noData && !awaitingPipeline &&
+        ce('div', { style:{marginLeft:'auto',alignSelf:'flex-end',paddingTop:20} },
+          ce('button', { onClick: handleExport,
+            style:{ padding:'7px 16px', fontSize:12, fontWeight:700, border:'none',
+                    borderRadius:8, background:'#EA580C', color:'#fff', cursor:'pointer' }
+          }, '↓ Export CSV')
+        ),
+    ),
+
+    /* click-away overlays for dropdowns */
+    (addRowOpen || addColOpen) && ce('div', {
+      style:{position:'fixed',inset:0,zIndex:10},
+      onClick:()=>{ setAddRowOpen(false); setAddColOpen(false); }
+    }),
+
+    /* Unapplied-filter warning */
+    unapplied.length > 0 && ce('div', {
+      style:{ padding:'7px 14px', background:'#FFF3CD', border:'1px solid #F5A623',
+              borderRadius:8, fontSize:12, color:'#92400E', marginBottom:12 }
+    }, `⚠  ${unapplied.join(', ')} filter${unapplied.length>1?'s':''} not applied — not a dimension in this matrix.`),
+
+    /* State messages */
+    unsupported && ce('div', { style:{ textAlign:'center', padding:50, color:'#94A3B8', fontSize:14 } },
+      new Set(allDims).size < allDims.length
+        ? 'A dimension cannot appear in both Rows and Columns.'
+        : `The combination ${rowDims.map(k=>DIMS.find(d=>d.key===k)?.label||k).join(' + ')} × ${colDims.map(k=>DIMS.find(d=>d.key===k)?.label||k).join(' + ')} is not supported — no matching data matrix.`
+    ),
+
+    awaitingPipeline && ce('div', { style:{ textAlign:'center', padding:50, color:'#94A3B8', fontSize:14 } },
+      '📦 This combination will be available after the next data sync.'
+    ),
+
+    noData && ce('div', { style:{ textAlign:'center', padding:50, color:'#94A3B8', fontSize:14 } },
+      'No data matches the current filters.'
+    ),
+
+    /* KPI summary bar */
+    !unsupported && !awaitingPipeline && !noData && grandTotals.gl > 0 &&
+    ce('div', { className:'card', style:{padding:'10px 18px',marginBottom:14,borderTop:'3px solid #EA580C'} },
+      ce('div', { style:{display:'flex',flexWrap:'wrap',alignItems:'stretch'} },
+        ...[
+          { label:'Total Leads', value:Nf(grandTotals.gl), color:'#9A3412' },
+          { label:'Retails',     value:Nf(grandTotals.gr), color:'#B91C1C' },
+          { label:'L2R%', value:Pf(grandTotals.gl>0?grandTotals.gr/grandTotals.gl*100:0), color:'#D97706' },
+          ...(data.rt_cols ? [
+            { label:'DMS',      value:Nf(Object.values(grandTotals.colVals).reduce((s,v)=>s+(v[2]||0),0)), color:'#7C3AED' },
+            { label:'Call Out', value:Nf(Object.values(grandTotals.colVals).reduce((s,v)=>s+(v[3]||0),0)), color:'#0891B2' },
+          ] : []),
+          { label:'Rows (shown)', value:String(sortedRows.length),  color:'#475569' },
+          { label:'Columns',      value:String(orderedCols.length), color:'#475569' },
+        ].map((s,i) => ce('div', { key:i, style:{
+          padding:'6px 16px', borderLeft:i>0?'1px solid #E2E8F0':'none',
+          display:'flex', flexDirection:'column', gap:2
+        }},
+          ce('div',{style:{fontSize:9,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'.06em',whiteSpace:'nowrap'}},s.label),
+          ce('div',{style:{fontSize:15,fontWeight:700,color:s.color,fontFamily:'DM Mono,monospace'}},s.value)
+        ))
+      )
+    ),
+
+    /* Pivot table */
+    !unsupported && !awaitingPipeline && !noData &&
+    ce('div', { style:{ overflowX:'auto', borderRadius:12, border:'1px solid #E2E8F0' } },
+      ce('table', { style:{ width:'100%', borderCollapse:'collapse', fontSize:13 } },
+
+        ce('thead', null, (() => {
+          const showOuterRow = hasC2 || multiMetric;
+          const showMidRow   = hasC2 && multiMetric;
+          const topBg   = '#FEF3C7'; const topTxt  = '#92400E';
+          const midBg   = '#FDE68A'; const midTxt  = '#92400E';
+          const botBg   = '#9A3412'; const botTxt  = '#fff';
+
+          const rowLabelTh = (dim, i, bg, txt, small) =>
+            ce('th', { key:`rl_${dim}`,
+              style:{ padding: small?'6px 16px':'10px 16px', textAlign:'left', fontWeight:700,
+                      whiteSpace:'nowrap', color: txt,
+                      position: i===0 ? 'sticky' : undefined, left: i===0 ? 0 : undefined,
+                      zIndex: i===0 ? 3 : undefined, background: bg,
+                      minWidth: i===0 ? 140 : 110,
+                      borderRight: i===rowDims.length-1 ? `1px solid ${txt==='#fff'?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.1)'}` : 'none',
+                      cursor: i===0 ? 'pointer' : 'default', userSelect:'none' },
+              onClick: i===0 ? ()=>{ setSortBy('__label__'); setSortDir(d=>d==='asc'?'desc':'asc'); } : undefined
+            }, (DIMS.find(d=>d.key===dim)?.label||dim) + (i===0&&sortBy==='__label__'?(sortDir==='asc'?' ↑':' ↓'):''));
+
+          const rows = [];
+
+          if (showOuterRow) {
+            rows.push(ce('tr', { key:'hdr0', style:{ background:topBg } },
+              ce('th', { colSpan: rowDims.length,
+                style:{ padding:'7px 16px', textAlign:'left', fontWeight:700, color:topTxt,
+                        position:'sticky', left:0, zIndex:3, background:topBg,
+                        borderRight:'1px solid rgba(0,0,0,0.1)' }
+              }, rowDims.map(k=>DIMS.find(d=>d.key===k)?.label||k).join(' → ')),
+              ...(hasC2
+                ? colGroups.map(({c0, span}, gi) =>
+                    ce('th', { key:`cg_${c0}`, colSpan: span * metrics.length,
+                      style:{ padding:'7px 12px', textAlign:'center', fontWeight:700, whiteSpace:'nowrap',
+                              color:topTxt, background:topBg,
+                              borderLeft: gi===0 ? 'none' : '1px solid rgba(0,0,0,0.1)' }
+                    }, c0)
+                  )
+                : orderedCols.map((col, ci) =>
+                    ce('th', { key:`cv_${col}`, colSpan: metrics.length,
+                      style:{ padding:'7px 12px', textAlign:'center', fontWeight:700, whiteSpace:'nowrap',
+                              color:topTxt, background:topBg,
+                              borderLeft: ci===0 ? 'none' : '1px solid rgba(0,0,0,0.1)' }
+                    }, col)
+                  )
+              ),
+              ce('th', { colSpan: metrics.length,
+                style:{ padding:'7px 12px', textAlign:'center', fontWeight:700,
+                        color:topTxt, background:topBg,
+                        borderLeft:'2px solid rgba(0,0,0,0.15)' }
+              }, 'TOTAL')
+            ));
+          }
+
+          if (showMidRow) {
+            rows.push(ce('tr', { key:'hdr1', style:{ background:midBg } },
+              ce('th', { colSpan: rowDims.length,
+                style:{ padding:'6px 16px', position:'sticky', left:0, zIndex:3, background:midBg,
+                        borderRight:'1px solid rgba(0,0,0,0.1)' }
+              }, ''),
+              ...orderedCols.map((ck, ci) => {
+                const c1 = ck.slice(ck.indexOf(COL_SEP) + 1);
+                const prevC0 = ci > 0 ? orderedCols[ci-1].slice(0, orderedCols[ci-1].indexOf(COL_SEP)) : null;
+                const thisC0 = ck.slice(0, ck.indexOf(COL_SEP));
+                return ce('th', { key:`cm_${ck}`, colSpan: metrics.length,
+                  style:{ padding:'6px 10px', textAlign:'center', fontWeight:600, whiteSpace:'nowrap',
+                          color:midTxt, background:midBg, fontSize:12,
+                          borderLeft: (ci===0||thisC0!==prevC0) ? '1px solid rgba(0,0,0,0.1)' : 'none' }
+                }, c1);
+              }),
+              ce('th', { colSpan: metrics.length,
+                style:{ padding:'6px 12px', textAlign:'center', fontWeight:700,
+                        color:midTxt, background:midBg,
+                        borderLeft:'2px solid rgba(0,0,0,0.15)' }
+              }, '')
+            ));
+          }
+
+          // Bottom header row
+          rows.push(ce('tr', { key:'hdrBot', style:{ background:botBg } },
+            rowDims.map((dim, i) => rowLabelTh(dim, i, botBg, botTxt, showOuterRow)),
+            ...(showOuterRow
+              ? (hasC2
+                  ? orderedCols.flatMap((ck, ci) => {
+                      const c1 = ck.slice(ck.indexOf(COL_SEP)+1);
+                      const prevC0 = ci>0?orderedCols[ci-1].slice(0,orderedCols[ci-1].indexOf(COL_SEP)):null;
+                      const thisC0 = ck.slice(0,ck.indexOf(COL_SEP));
+                      return metrics.map((m,mi) => ce('th',{ key:`bh_${ck}_${m.key}`,
+                        style:{padding:'8px 10px',textAlign:'center',fontWeight:700,whiteSpace:'nowrap',color:botTxt,background:botBg,fontSize:12,
+                               borderLeft:(mi===0&&(ci===0||thisC0!==prevC0))?'1px solid rgba(255,255,255,.15)':'none'} },
+                        m.label));
+                    })
+                  : orderedCols.flatMap((col, ci) =>
+                      metrics.map((m,mi) => ce('th',{ key:`bh_${col}_${m.key}`,
+                        style:{padding:'8px 10px',textAlign:'center',fontWeight:700,whiteSpace:'nowrap',color:botTxt,background:botBg,fontSize:12,
+                               borderLeft:(mi===0&&ci===0)?'none':(mi===0)?'1px solid rgba(255,255,255,.15)':'none'} },
+                        m.label))
+                    )
+              )
+              : orderedCols.map((col, ci) => ce('th',{key:`bh_${col}`,
+                  style:{padding:'10px 12px',textAlign:'center',fontWeight:700,whiteSpace:'nowrap',color:botTxt,background:botBg,
+                         borderLeft:ci===0?'1px solid rgba(255,255,255,.15)':'none',cursor:'pointer',userSelect:'none'},
+                  onClick:()=>{ setSortBy(col); setSortDir(d=>d==='asc'?'desc':'asc'); }
+                }, col+(sortBy===col?(sortDir==='asc'?' ↑':' ↓'):'')))
+            ),
+            metrics.map((m,mi) => ce('th',{ key:`tot_${m.key}`,
+              style:{padding:'8px 12px',textAlign:'center',fontWeight:700,color:botTxt,background:'#7C2D12',
+                     borderLeft:mi===0?'2px solid rgba(255,255,255,.3)':'none',whiteSpace:'nowrap'} },
+              metrics.length>1?m.label:'TOTAL'))
+          ));
+
+          return rows;
+        })()),
+
+        ce('tbody', null,
+          sortedRows.map(({ label, entry }, ri) => {
+            const isCol = collapsed.has(label);
+            const hasCh = hasR2 && entry.children.size > 0;
+            return [
+              ce('tr', { key:`r_${label}`, style:{ background: ri%2===0?'#fff':'#FFF7ED' } },
+                ce('td', {
+                  style:{ padding:'8px 16px', fontWeight:hasCh?700:600, position:'sticky', left:0, zIndex:1,
+                          background: ri%2===0?'#fff':'#FFF7ED',
+                          borderRight:'1px solid #E2E8F0', cursor: hasCh?'pointer':'default',
+                          whiteSpace:'nowrap' },
+                  onClick: hasCh ? () => { setCollapsed(prev => { const n=new Set(prev); n.has(label)?n.delete(label):n.add(label); return n; }) } : undefined
+                }, hasCh ? (isCol?'▶ ':'▼ ')+label : label),
+                hasR2 && ce('td',{style:{padding:'8px 12px',fontWeight:600,borderRight:'1px solid #E2E8F0',whiteSpace:'nowrap'}}, hasR2?'Subtotal':''),
+                orderedCols.flatMap((ck,ci) =>
+                  metrics.map((m,mi) => ce('td',{ key:`${label}_${ck}_${m.key}`,
+                    style:{padding:'7px 12px',textAlign:'right',whiteSpace:'nowrap',
+                           borderLeft:(mi===0&&ci===0)?'none':(mi===0)?'1px solid #F1F5F9':'none'} },
+                    fmtV(entry.sub.get(ck), m.key)))
+                ),
+                metrics.map((m,mi) => ce('td',{ key:`tot_${label}_${m.key}`,
+                  style:{padding:'7px 12px',textAlign:'right',fontWeight:700,background:'#FEF3C7',
+                         borderLeft:mi===0?'2px solid #F59E0B':'none',whiteSpace:'nowrap'} },
+                  fmtTotal(entry.sub, m.key)))
+              ),
+              ...(hasCh && !isCol
+                ? [...entry.children.entries()].map(([r2Lbl, cMap]) =>
+                    ce('tr', { key:`r2_${label}_${r2Lbl}`, style:{ background:'#FFFBEB' } },
+                      ce('td',{style:{padding:'6px 16px 6px 28px',color:'#6B7280',position:'sticky',left:0,zIndex:1,background:'#FFFBEB',borderRight:'1px solid #E2E8F0'}},''),
+                      ce('td',{style:{padding:'6px 12px',color:'#374151',fontSize:12,borderRight:'1px solid #E2E8F0',whiteSpace:'nowrap'}},r2Lbl),
+                      orderedCols.flatMap((ck,ci) =>
+                        metrics.map((m,mi) => ce('td',{ key:`c2_${r2Lbl}_${ck}_${m.key}`,
+                          style:{padding:'6px 12px',textAlign:'right',fontSize:12,whiteSpace:'nowrap',
+                                 borderLeft:(mi===0&&ci===0)?'none':(mi===0)?'1px solid #F1F5F9':'none'} },
+                          fmtV(cMap.get(ck), m.key)))
+                      ),
+                      metrics.map((m,mi) => ce('td',{ key:`c2tot_${r2Lbl}_${m.key}`,
+                        style:{padding:'6px 12px',textAlign:'right',fontWeight:600,fontSize:12,background:'#FEF3C7',
+                               borderLeft:mi===0?'2px solid #F59E0B':'none'} },
+                        fmtTotal(cMap, m.key)))
+                    )
+                  )
+                : []
+              )
+            ];
+          }).flat(),
+
+          /* Grand total row */
+          ce('tr', { className:'total-row' },
+            ce('td', { colSpan: rowDims.length,
+              style:{ padding:'8px 16px', fontWeight:800, position:'sticky', left:0, zIndex:1,
+                      background:'#1E293B', color:'#fff', whiteSpace:'nowrap',
+                      borderRight:'1px solid rgba(255,255,255,.2)' }
+            }, '∑ Grand Total'),
+            orderedCols.flatMap((ck,ci) =>
+              metrics.map((m,mi) => {
+                const v = getMetricVal(grandTotals.colVals[ck], m.key);
+                return ce('td',{ key:`gt_${ck}_${m.key}`,
+                  style:{padding:'8px 12px',textAlign:'right',fontWeight:700,fontFamily:'DM Mono,monospace',fontSize:12,
+                         borderLeft:(mi===0&&ci===0)?'none':(mi===0)?'1px solid rgba(255,255,255,.15)':'none'} },
+                  m.key==='retpct'?(v>0?v.toFixed(1)+'%':'—'):v===0?'—':Nf(v));
+              })
+            ),
+            metrics.map((m,mi) => {
+              let t = 0;
+              if (m.key==='retpct') t = grandTotals.gl>0?(grandTotals.gr/grandTotals.gl*100):0;
+              else for (const {sub} of pivotResult.tbl.values()) for (const v of sub.values()) t += getMetricVal(v,m.key);
+              return ce('td',{ key:`gttot_${m.key}`,
+                style:{padding:'8px 12px',textAlign:'right',fontWeight:800,fontFamily:'DM Mono,monospace',fontSize:12,
+                       background:'#0F172A',borderLeft:mi===0?'2px solid rgba(255,255,255,.3)':'none'} },
+                m.key==='retpct'?(t>0?t.toFixed(1)+'%':'—'):t===0?'—':Nf(t));
+            })
           )
+        )
+      )
     )
+  );
+});
+
   );
 });
 
