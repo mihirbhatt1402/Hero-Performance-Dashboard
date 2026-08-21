@@ -48,9 +48,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;color:#0f172a;m
 
 /* ── Tables ── */
 table{width:100%;border-collapse:collapse;font-size:11.5px}
-th{padding:9px 12px;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,#7C2D12 0%,#9A3412 100%);text-align:center;border:1px solid rgba(255,255,255,.15);white-space:nowrap;position:sticky;top:0;z-index:2}
+th{padding:9px 12px;font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%);text-align:center;border:1px solid rgba(255,255,255,.15);white-space:nowrap;position:sticky;top:0;z-index:2}
 th.left{text-align:left}
-th.sub{background:linear-gradient(90deg,#9A3412,#EA580C);font-size:8.5px;color:#FED7AA;position:sticky;top:33px;z-index:1;font-weight:600;letter-spacing:.06em;border:1px solid rgba(255,255,255,.15)}
+th.sub{background:linear-gradient(90deg,#EA580C,#F97316);font-size:8.5px;color:#fff;position:sticky;top:33px;z-index:1;font-weight:600;letter-spacing:.06em;border:1px solid rgba(255,255,255,.15)}
 th.grp-toggle{cursor:pointer;user-select:none}
 th.grp-toggle:hover{filter:brightness(.94)}
 td{padding:7px 12px;border:1px solid #E2E8F0;font-size:11.5px;text-align:center;font-family:'DM Mono',monospace;background:#fff;vertical-align:middle}
@@ -1216,8 +1216,8 @@ const DimGrid = React.memo(function DimGrid({
 
   // Header row 1 — top-level group names (sub-groups shown as peers when parent expanded)
   const hdr1 = [
-    ce('th', { key:'dim', className:'left', rowSpan:2, style:{minWidth:160,zIndex:3,background:'#E8EAF6',color:'#1A237E'} }, dimLabel),
-    ce('th', { key:'tot', colSpan:4, style:{background:'#E8EAF6',color:'#1A237E'} }, 'TOTAL'),
+    ce('th', { key:'dim', className:'left', rowSpan:2, style:{minWidth:160,zIndex:3,background:'#1D4ED8',color:'#fff'} }, dimLabel),
+    ce('th', { key:'tot', colSpan:4, style:{background:'#1D4ED8',color:'#fff'} }, 'TOTAL'),
     ...(viewerMode ? [] : visibleCols.map(col => {
       const hasChildren = !col.isChild && col.subGroups && col.subGroups.filter(sg=>sg.srcs.length>0).length > 1;
       const canToggle = onToggleGrp && (hasChildren || col.isChild);
@@ -1227,9 +1227,9 @@ const DimGrid = React.memo(function DimGrid({
         key: col.id, colSpan: 4,
         className: canToggle ? 'grp-toggle' : '',
         style: {
-          background: col.lightColor || '#F3F4F6',
-          color: col.color,
-          borderTop: '2px solid ' + col.color,
+          background: col.color,
+          color: '#fff',
+          borderTop: '2px solid ' + col.color + '88',
           ...(col.borderLeft ? { borderLeft: col.borderLeft } : {})
         },
         onClick: canToggle ? () => onToggleGrp(toggleId) : undefined
@@ -1239,7 +1239,7 @@ const DimGrid = React.memo(function DimGrid({
 
   // Header row 2 — always LEADS / RETAIL / CONTRIB% / L2R% per visible col
   const hdr2 = [
-    ...(noGroupHeaders ? [ce('th', { key:'dim', className:'left', style:{minWidth:160,zIndex:3,background:'#E8EAF6',color:'#1A237E'} }, dimLabel)] : []),
+    ...(noGroupHeaders ? [ce('th', { key:'dim', className:'left', style:{minWidth:160,zIndex:3,background:'#1D4ED8',color:'#fff'} }, dimLabel)] : []),
     ce('th', { key:'tl', className:'sub' }, 'Leads'),
     ce('th', { key:'tr', className:'sub' }, 'Retail'),
     ce('th', { key:'tc', className:'sub' }, 'Contrib%'),
@@ -1588,9 +1588,9 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
           ce('thead', null, ce('tr', null,
             ce('th', { className:'left', style:{minWidth:140} }, 'Source'),
             ce('th', null, 'Leads'),
-            ce('th', { style:{background:'#FFEBEE',color:'#B71C1C'} }, 'Retails'),
+            ce('th', null, 'Retails'),
             ce('th', null, 'Contrib%'),
-            ce('th', { style:{background:'#FFF8E1',color:'#E65100'} }, 'L2R%'),
+            ce('th', null, 'L2R%'),
           )),
           ce('tbody', null,
             ...srcBreak.map((s,i) => ce('tr', { key:i },
@@ -2149,13 +2149,13 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
 
     // ── Headers ──
     const hdr1 = [
-      ce('th',{key:'dim',className:'left',rowSpan:2,style:{minWidth:220,zIndex:3,background:'#E8EAF6',color:'#1A237E'}},'Zone / State / City / Dealer'),
-      ce('th',{key:'tot',colSpan:4,style:{background:'#E8EAF6',color:'#1A237E'}},'TOTAL'),
+      ce('th',{key:'dim',className:'left',rowSpan:2,style:{minWidth:220,zIndex:3,background:'#1D4ED8',color:'#fff'}},'Zone / State / City / Dealer'),
+      ce('th',{key:'tot',colSpan:4,style:{background:'#1D4ED8',color:'#fff'}},'TOTAL'),
       ...(viewerMode ? [] : srcGroups.map(grp => {
         const exp = expandedGrps.has(grp.id);
         const sgs = grp.subGroups.filter(sg=>sg.srcs.length>0);
         return ce('th',{key:grp.id,colSpan:exp?sgs.length*4:4,
-          className:'grp-toggle',style:{background:grp.lightColor||'#F3F4F6',color:grp.color,borderTop:'2px solid '+grp.color},
+          className:'grp-toggle',style:{background:grp.color,color:'#fff',borderTop:'2px solid rgba(0,0,0,.12)'},
           onClick:()=>onToggleGrp(grp.id)
         },(exp?'▴ ':'▾ ')+grp.label);
       }))
@@ -2599,18 +2599,18 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
       ce('table',null,
         ce('thead',null,
           ce('tr',null,
-            ce('th',{className:'left',rowSpan:2,style:{minWidth:160,position:'sticky',left:0,zIndex:3,background:'#E8EAF6',color:'#1A237E'}},rowLabel),
-            ce('th',{colSpan:totalColSpan,style:{background:'#E8EAF6',color:'#1A237E'}},'TOTAL'),
-            ...colKeys.map(ck=>ce('th',{key:ck,colSpan:3,style:{borderLeft:'2px solid #BFDBFE',background:'#F3F4F6',whiteSpace:'nowrap',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis'}},ck))
+            ce('th',{className:'left',rowSpan:2,style:{minWidth:160,position:'sticky',left:0,zIndex:3,background:'#1D4ED8',color:'#fff'}},rowLabel),
+            ce('th',{colSpan:totalColSpan,style:{background:'#1D4ED8',color:'#fff'}},'TOTAL'),
+            ...colKeys.map((ck,ci)=>ce('th',{key:ck,colSpan:3,style:{borderLeft:'2px solid rgba(255,255,255,.3)',background:['#7C3AED','#2563EB','#059669','#DC2626','#D97706','#0891B2','#BE185D','#0D9488'][ci%8],color:'#fff',whiteSpace:'nowrap',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis'}},ck))
           ),
           ce('tr',null,
             ce('th',{className:'sub'},'Leads'),
             ce('th',{className:'sub'},'Retail'),
             ce('th',{className:'sub'},'Contrib%'),
-            ce('th',{className:'sub',style:{color:'#D97706'}},'L2R%'),
-            ...(showRT?[ce('th',{className:'sub',style:{color:'#7C3AED'}},'DMS'),ce('th',{className:'sub',style:{color:'#0891B2'}},'Call Out')]:[]),
+            ce('th',{className:'sub'},'L2R%'),
+            ...(showRT?[ce('th',{className:'sub'},'DMS'),ce('th',{className:'sub'},'Call Out')]:[]),
             ...colKeys.flatMap(ck=>[
-              ce('th',{key:ck+'l',className:'sub',style:{borderLeft:'2px solid #BFDBFE'}},'Leads'),
+              ce('th',{key:ck+'l',className:'sub',style:{borderLeft:'2px solid rgba(255,255,255,.3)'}},'Leads'),
               ce('th',{key:ck+'r',className:'sub'},'Retail'),
               ce('th',{key:ck+'l2r',className:'sub',style:{color:'#D97706'}},'L2R%'),
             ])
@@ -3464,9 +3464,9 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT }) {
         ce('thead', null, (() => {
           const showOuterRow = hasC2 || multiMetric;
           const showMidRow   = hasC2 && multiMetric;
-          const topBg   = '#FEF3C7'; const topTxt  = '#92400E';
-          const midBg   = '#FDE68A'; const midTxt  = '#92400E';
-          const botBg   = '#9A3412'; const botTxt  = '#fff';
+          const topBg   = '#1D4ED8'; const topTxt  = '#fff';
+          const midBg   = '#3B82F6'; const midTxt  = '#fff';
+          const botBg   = '#EA580C'; const botTxt  = '#fff';
 
           const rowLabelTh = (dim, i, bg, txt, small) =>
             ce('th', { key:`rl_${dim}`,
