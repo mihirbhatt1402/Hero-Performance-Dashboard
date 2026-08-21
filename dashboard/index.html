@@ -838,6 +838,26 @@ function CsvBtn({onClick}) {
   }, '\u2193 CSV');
 }
 
+function makeAggCsv(agg, dimLabel, filename) {
+  if (!agg) return;
+  const srcKeys = Object.keys(agg.grandSrc || {});
+  const hdr = [dimLabel, 'Leads', 'Retail', 'Contrib%', 'L2R%',
+    ...srcKeys.flatMap(s => [s+' L', s+' R', s+' L2R%'])];
+  const rows = [hdr];
+  const entries = Object.entries(agg.dimAggs).sort((a,b) => b[1].total.l - a[1].total.l);
+  for (const [dk, da] of entries) {
+    const r = [dk, da.total.l, da.total.r,
+      agg.grand.l > 0 ? +(da.total.l/agg.grand.l*100).toFixed(1) : 0,
+      +da.total.l2r.toFixed(1)];
+    for (const s of srcKeys) { const sv = da.src[s] || {l:0,r:0,l2r:0}; r.push(sv.l, sv.r, +sv.l2r.toFixed(1)); }
+    rows.push(r);
+  }
+  const gt = ['Grand Total', agg.grand.l, agg.grand.r, 100, +agg.grand.l2r.toFixed(1)];
+  for (const s of srcKeys) { const sv = agg.grandSrc[s] || {l:0,r:0,l2r:0}; gt.push(sv.l, sv.r, +sv.l2r.toFixed(1)); }
+  rows.push(gt);
+  exportCsv(rows, filename);
+}
+
 /* ════════════════════════════════════════════════════════════════════
    MULTI-SELECT FILTER COMPONENT
    ════════════════════════════════════════════════════════════════════ */
@@ -1089,13 +1109,19 @@ function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedG
   }, [aggs]);
   return ce('div', { className:'fade-up' },
     summaryAgg && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
-      ce('div', { className:'section-title', style:{marginBottom:10} }, '∑ All Months — Summary'),
+      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+        ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Summary'),
+        ce(CsvBtn, { onClick:()=>makeAggCsv(summaryAgg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_AllMonths.csv') })
+      ),
       ce(DimGrid, { agg:summaryAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
     ),
     aggs.map(({ M, agg }) => {
       if (!agg || (agg.grand.l === 0 && agg.grand.r === 0)) return null;
       return ce('div', { key: M, className:'card', style:{ padding:'16px 18px', marginBottom:14 } },
-        ce('div', { className:'section-title', style:{marginBottom:10} }, noPrefix ? M : (title || dimLabel) + ' — ' + M),
+        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+          ce('div', { className:'section-title', style:{marginBottom:0} }, noPrefix ? M : (title || dimLabel) + ' — ' + M),
+          ce(CsvBtn, { onClick:()=>makeAggCsv(agg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv') })
+        ),
         ce(DimGrid, { agg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
       );
     })
@@ -1476,8 +1502,17 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
     if (gL === 0 && gR === 0) return null;
     const sorted = [...bySrc.entries()].sort((a,b) => b[1][0]-a[1][0]);
     const grand = fin(gL, gR);
+    const csvSorted = [...bySrc.entries()].sort((a,b)=>b[1][0]-a[1][0]);
     return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
-      ce('div', { className:'section-title', style:{marginBottom:10} }, M),
+      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+        ce('div', { className:'section-title', style:{marginBottom:0} }, M),
+        ce(CsvBtn, { onClick:()=>{
+          const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
+          csvSorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+          aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
+          exportCsv(aoa,'Hero_Source_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
+        }})
+      ),
       ce('div', { className:'scroll-x' },
         ce('table', null,
           ce('thead', null,
@@ -1553,7 +1588,15 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
 
   return ce('div', {className:'fade-up'},
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
-      ce('div', { className:'section-title', style:{marginBottom:10} }, '∑ All Months — Source Summary'),
+      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+        ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Source Summary'),
+        ce(CsvBtn, { onClick:()=>{
+          const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
+          crossMonthTotals.sorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+          aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
+          exportCsv(aoa,'Hero_Source_AllMonths.csv');
+        }})
+      ),
       ce('div', { className:'scroll-x' },
         ce('table', null,
           ce('thead', null, ce('tr', null,
@@ -2185,7 +2228,10 @@ const BuyingIntentTab = React.memo(function BuyingIntentTab({ data, filters, mon
   }, [months, renderAgg]);
   return ce('div', { className:'fade-up' },
     bdSummaryAgg && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
-      ce('div', { className:'section-title', style:{marginBottom:10} }, '∑ All Months — Buying Intent Summary'),
+      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+        ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Buying Intent Summary'),
+        ce(CsvBtn, { onClick:()=>makeAggCsv(bdSummaryAgg,'Intent (Days)','Hero_BuyingIntent_AllMonths.csv') })
+      ),
       ce(DimGrid, { agg:bdSummaryAgg, srcGroups, dimLabel:'Intent (Days)', expandedGrps, onToggleGrp, noSort:true })
     ),
     months.map(M => {
@@ -2196,12 +2242,17 @@ const BuyingIntentTab = React.memo(function BuyingIntentTab({ data, filters, mon
       BD_BUCKETS.forEach(bk => { if (agg.dimAggs[bk]) orderedAgg.dimAggs[bk + ' days'] = agg.dimAggs[bk]; });
 
       return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
-        ce('div', { className:'section-title', style:{marginBottom:10} }, 'Buying Intent — ' + M),
+        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+          ce('div', { className:'section-title', style:{marginBottom:0} }, 'Buying Intent — ' + M),
+          ce(CsvBtn, { onClick:()=>makeAggCsv(orderedAgg,'Intent (Days)','Hero_BuyingIntent_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv') })
+        ),
         ce(DimGrid, { agg: orderedAgg, srcGroups, dimLabel:'Intent (Days)', expandedGrps, onToggleGrp, noSort: true })
       );
     })
   );
 });
+
+const DispersionTab = BuyingIntentTab;
 
 /* ════════════════════════════════════════════════════════════════════
    FILTER BAR
@@ -2295,7 +2346,7 @@ function buildCrossAgg(table, maps, rowMapKey, colMapKey, lmMapKey, rowPos, colP
 }
 
 // CrossTabGrid: renders a state/city × model cross-tabulation
-const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel, rtCols, onExport, title }) {
+const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel, rtCols, onExport, onCsvExport, title }) {
   if (!agg || agg.grand.l===0) return null;
   const {grand,colKeys,rowKeys,rowAggs}=agg;
   const showRT=!!rtCols;
@@ -2305,7 +2356,10 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
   return ce('div',null,
     title && ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}},
       ce('div',{className:'section-title',style:{marginBottom:0}},title),
-      onExport && ce(ExportBtn,{onClick:onExport})
+      ce('div',{style:{display:'flex',gap:4}},
+        onCsvExport && ce(CsvBtn,{onClick:onCsvExport}),
+        onExport && ce(ExportBtn,{onClick:onExport})
+      )
     ),
     ce('div',{className:'scroll-x'},
       ce('table',null,
@@ -2447,7 +2501,10 @@ const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months,
     ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, 'City × Source'),
-        ce(ExportBtn, { onClick: exportAll })
+        ce('div', {style:{display:'flex',gap:4}},
+          ce(CsvBtn, { onClick:()=>makeAggCsv(summaryAgg,'City','Hero_CitySource_AllMonths.csv') }),
+          ce(ExportBtn, { onClick: exportAll })
+        )
       ),
       ce(DimGrid, { agg:summaryAgg, srcGroups, dimLabel:'City', expandedGrps, onToggleGrp, expandedRows, onToggleRow, viewerMode })
     )
@@ -2500,6 +2557,13 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
     summaryAgg && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
       ce(CrossTabGrid, { agg:summaryAgg, rowLabel:'State', colLabel:'Model', rtCols:data.rt_cols,
         title:'∑ All Months — State × Model Summary',
+        onCsvExport:()=>{
+          const {colKeys,rowKeys,rowAggs,grand}=summaryAgg;
+          const aoa=[['State','Leads','Retail','Contrib%','L2R%',...colKeys.flatMap(ck=>[ck+' L',ck+' R',ck+' L2R%'])]];
+          rowKeys.forEach(rk=>{const da=rowAggs[rk];const r=[rk,da.total.l,da.total.r,grand.l>0?+(da.total.l/grand.l*100).toFixed(1):0,+da.total.l2r.toFixed(1)];colKeys.forEach(ck=>{const ca=da.colAggs[ck]||{l:0,r:0,l2r:0};r.push(ca.l,ca.r,+ca.l2r.toFixed(1));});aoa.push(r);});
+          const gt=['Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];colKeys.forEach(ck=>{let tL=0,tR=0;rowKeys.forEach(rk=>{const ca=(rowAggs[rk].colAggs[ck]||{l:0,r:0});tL+=ca.l;tR+=ca.r;});gt.push(tL,tR,tL>0?+(tR/tL*100).toFixed(1):0);});aoa.push(gt);
+          exportCsv(aoa,'Hero_StateModel_AllMonths.csv');
+        },
         onExport:()=>exportAgg(summaryAgg,'Summary') })
     ),
     monthlyAggs.map(({M,agg}) => agg ?
@@ -2573,7 +2637,15 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
   return ce('div', { className:'fade-up' },
     ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
       ce(CrossTabGrid, { agg:summaryAgg, rowLabel:'City', colLabel:'Model', rtCols:data.rt_cols,
-        title:'City × Model', onExport: exportSummary })
+        title:'City × Model',
+        onCsvExport:()=>{
+          const {colKeys,rowKeys,rowAggs,grand}=summaryAgg;
+          const aoa=[['City','Leads','Retail','Contrib%','L2R%',...colKeys.flatMap(ck=>[ck+' L',ck+' R',ck+' L2R%'])]];
+          rowKeys.forEach(rk=>{const da=rowAggs[rk];const r=[rk,da.total.l,da.total.r,grand.l>0?+(da.total.l/grand.l*100).toFixed(1):0,+da.total.l2r.toFixed(1)];colKeys.forEach(ck=>{const ca=da.colAggs[ck]||{l:0,r:0,l2r:0};r.push(ca.l,ca.r,+ca.l2r.toFixed(1));});aoa.push(r);});
+          const gt=['Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];colKeys.forEach(ck=>{let tL=0,tR=0;rowKeys.forEach(rk=>{const ca=(rowAggs[rk].colAggs[ck]||{l:0,r:0});tL+=ca.l;tR+=ca.r;});gt.push(tL,tR,tL>0?+(tR/tL*100).toFixed(1):0);});aoa.push(gt);
+          exportCsv(aoa,'Hero_CityModel_AllMonths.csv');
+        },
+        onExport: exportSummary })
     )
   );
 });
