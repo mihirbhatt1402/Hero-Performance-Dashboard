@@ -352,6 +352,17 @@ function normalizeHeroMonth(s){
   return s;
 }
 
+function parseHeroDate(s){
+  if(!s)return null;
+  s=String(s).trim();
+  const m1=s.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})$/);
+  if(m1)return new Date(+m1[1],+m1[2]-1,+m1[3]);
+  const m2=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m2)return new Date(+m2[3],+m2[2]-1,+m2[1]);
+  return null;
+}
+const DATA_CUTOFF=new Date(2026,7,3); // 03-Aug-2026; exclude records before this date
+
 function parseHeroLeadRows(raw){
   if(!raw.length)return{rows:[],diagnostics:{totalRows:0,uniqueIds:0,dupIds:0}};
   const keyMap={};
@@ -368,22 +379,30 @@ function parseHeroLeadRows(raw){
     }
     return'';
   }
-  const rows=raw.map(r=>{
+  const rows=[];
+  for(const r of raw){
     const opty_id=get(r,['opty_id','opty id','lead id','leadid','lead_id','opportunity id','opportunity_id']);
+    const lead_month_raw=get(r,['lead month','lead_month','leadmonth','month']);
+    const lead_month=normalizeHeroMonth(lead_month_raw);
+    if(!opty_id||!lead_month)continue;
+    // Parse lead creation date for cutoff and dispersion calculation
+    const dateRaw=get(r,['opty created date','opty_created_date','created date','created_date','lead date','lead_date','lead created date','leadcreateddate','creation date','creation_date','createdon']);
+    let leadDate=parseHeroDate(dateRaw)||parseHeroDate(lead_month_raw);
+    // Apply data cutoff: exclude records before 03-Aug-2026
+    if(leadDate&&leadDate<DATA_CUTOFF)continue;
     const lt=get(r,['lt','lead type','leadtype','lead_type']);
     const source=get(r,['medium','source','lead source','leadsource']);
     const model=get(r,['model','vehicle model','vehiclemodel','bike model']);
     const city=get(r,['city','lead city']);
     const state=get(r,['state','lead state']);
     const dup=get(r,['duplicate check','duplicity check','duplicate','is duplicate','isdup','is_duplicate']);
-    const lead_month_raw=get(r,['lead month','lead_month','leadmonth','month']);
     const isUnique=dup?dup.toLowerCase()==='unique':true;
-    return{
+    rows.push({
       opty_id,lt:lt||'Unknown',source:source||'Unknown',
       model:canonicalModel(model)||'Unknown',city:city||'Unknown',state:canonicalState(state)||'Unknown',
-      lead_month:normalizeHeroMonth(lead_month_raw),isUnique
-    };
-  }).filter(r=>r.opty_id&&r.lead_month);
+      lead_month,leadDate,isUnique
+    });
+  }
   const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
   return{rows,diagnostics:{totalRows:raw.length,uniqueIds,dupIds:rows.length-uniqueIds}};
 }
@@ -408,20 +427,16 @@ function parseHeroRetailRows(raw){
     const sourceLeadId=get(r,['sourcelead id','sourcelead_id','source lead id','source_lead_id','sourceleadid','lead id','leadid']);
     const performanceMonth=normalizeHeroMonth(get(r,['performance month','performancemonth','performance_month','retail month','retailmonth','month']));
     if(!sourceLeadId||!performanceMonth)continue;
-    // Extract Retail_Attribution_Date
-    const dateStr=get(r,['retail_attribution_date','retailattributiondate','attribution date','attribution_date']);
-    if(dateStr){
-      let d=null;
-      const m1=dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-      if(m1)d=new Date(+m1[3],+m1[2]-1,+m1[1]);
-      else{const m2=dateStr.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})$/);if(m2)d=new Date(+m2[1],+m2[2]-1,+m2[3]);}
-      if(d&&!isNaN(d.getTime())&&(!maxRetailDate||d>maxRetailDate))maxRetailDate=d;
-    }
+    // Extract and filter by Retail_Attribution_Date (cutoff: 03-Aug-2026)
+    const dateStr=get(r,['retail_attribution_date','retailattributiondate','attribution date','attribution_date','retail date','retaildate','retail_date']);
+    const retailDate=parseHeroDate(dateStr);
+    if(retailDate&&retailDate<DATA_CUTOFF)continue; // exclude pre-cutoff retail records
+    if(retailDate&&!isNaN(retailDate.getTime())&&(!maxRetailDate||retailDate>maxRetailDate))maxRetailDate=retailDate;
     // Extract Call Type (DMS vs Call Out)
     const ctRaw=get(r,['call type','calltype','call_type','call-type']);
     const ctLow=ctRaw.toLowerCase();
     const callType=ctLow.includes('dms')?'dms':ctLow.includes('call')?'co':'other';
-    rows.push({sourceLeadId,performanceMonth,callType});
+    rows.push({sourceLeadId,performanceMonth,callType,retailDate});
   }
   const uniqueIds=new Set(rows.map(r=>r.sourceLeadId)).size;
   return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds},maxRetailDate};
@@ -443,8 +458,10 @@ function joinHeroData(leadResult,retailResult){
     const sorted=isBooked?retail.sort((a,b)=>heroMonthOrder(a.performanceMonth)-heroMonthOrder(b.performanceMonth)):[];
     const booking_month=isBooked?sorted[0].performanceMonth:'';
     const callType=isBooked?(sorted[0].callType||'other'):'other';
+    const retailDate=isBooked?(sorted[0].retailDate||null):null;
     return{opty_id:lr.opty_id,lt:lr.lt,source:lr.source,model:lr.model,city:lr.city,state:lr.state,
-      lead_month:lr.lead_month,booking_month,isUnique:lr.isUnique,isBooked,callType};
+      lead_month:lr.lead_month,booking_month,isUnique:lr.isUnique,isBooked,callType,
+      leadDate:lr.leadDate||null,retailDate};
   });
   return{rows:joined,diagnostics:{
     leadTotalRows:leadDiag.totalRows,leadUniqueIds:leadDiag.uniqueIds,leadDupIds:leadDiag.dupIds,
@@ -509,6 +526,11 @@ function buildPayload(joinedRows){
   const bm_mA=new Map(),bm_smA=new Map(),bm_mmA=new Map(),bm_stmA=new Map(),bm_ltmA=new Map();
   const bm_mxstA=new Map(),bm_cmA=new Map(),bm_csmA=new Map(),bm_cxmA=new Map(),bm_univA=new Map();
 
+  // Retail Dispersion (bdm): [rep_days, src_idx, lm_idx, L, R_all, R_dms, R_co]
+  // rep_days = representative numeric value per BD bucket (passes through bdBucket correctly)
+  const BD_REP={'0–7':0,'8–14':8,'15–30':15,'31–60':31,'61–90':61,'90+':91};
+  const bdmA=new Map(),u_bdmA=new Map();
+
   // a4: accumulate [L, R_all, R_dms, R_co]
   function a4(m,k,L,Ra,Rd,Rc){const e=m.get(k);if(e){e[0]+=L;e[1]+=Ra;e[2]+=Rd;e[3]+=Rc;}else m.set(k,[L,Ra,Rd,Rc]);}
 
@@ -559,6 +581,16 @@ function buildPayload(joinedRows){
     a4(bm_csmA,ci+'|'+si+'|'+bmi,L,R,Rd,Rc);
     a4(bm_cxmA,ci+'|'+mi+'|'+bmi,L,R,Rd,Rc);
     a4(bm_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+bmi,L,R,Rd,Rc);
+
+    // Retail Dispersion: accumulate for all booked leads with valid dates
+    if(r.isBooked&&r.leadDate&&r.retailDate){
+      const days=Math.max(0,Math.round((r.retailDate.getTime()-r.leadDate.getTime())/86400000));
+      const bk=bdBucket(days);
+      const rep=BD_REP[bk];
+      const Ra2=1,Rd2=(r.callType==='dms')?1:0,Rc2=(r.callType==='co')?1:0;
+      a4(bdmA,rep+'|'+si+'|'+li,1,Ra2,Rd2,Rc2);
+      if(r.isUnique)a4(u_bdmA,rep+'|'+si+'|'+li,1,Ra2,Rd2,Rc2);
+    }
   }
   const f1=m=>[...m.entries()].map(([k,v])=>[+k,v[0],v[1],v[2],v[3]]);
   const f2=m=>[...m.entries()].map(([k,v])=>{const[a,b]=k.split('|');return[+a,+b,v[0],v[1],v[2],v[3]];});
@@ -575,7 +607,7 @@ function buildPayload(joinedRows){
     // On Update matrices (booking_month dimension)
     bm_monthly:f1(bm_mA),bm_sm:f2(bm_smA),bm_mm:f3(bm_mmA),bm_stm:f3(bm_stmA),bm_ltm:f3(bm_ltmA),
     bm_mxst:f3(bm_mxstA),bm_cm:f2(bm_cmA),bm_csm:f3(bm_csmA),bm_cxm:f3(bm_cxmA),bm_univ:f5(bm_univA),
-    disp:[],u_disp:[],zm:[],u_zm:[],bdm:[],u_bdm:[],
+    disp:[],u_disp:[],zm:[],u_zm:[],bdm:f3(bdmA),u_bdm:f3(u_bdmA),
     mlt:[],stlt:[],cdm:[],cdsm:[],stcm:[],
     u_mlt:[],u_stlt:[],u_cdm:[],u_cdsm:[],u_stcm:[],
     stdm:[],mxdl:[],ltdl:[],u_stdm:[],u_mxdl:[],u_ltdl:[],
