@@ -361,10 +361,13 @@ function parseHeroDate(s){
   if(m2)return new Date(+m2[3],+m2[2]-1,+m2[1]);
   return null;
 }
-const DATA_CUTOFF=new Date(2026,7,3); // 03-Aug-2026; exclude records before this date
+// 03-Aug-2026: records before this date are excluded.
+// Month order for Sep'2026 = first month clearly after the cutoff (Aug'2026 without day cannot be confirmed >= 3rd)
+const DATA_CUTOFF=new Date(2026,7,3);
+const CUTOFF_MONTH_ORDER_CLEAR=heroMonthOrder("Sep'2026"); // month >= Sep'2026 is unambiguously post-cutoff
 
 function parseHeroLeadRows(raw){
-  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,uniqueIds:0,dupIds:0}};
+  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,uniqueIds:0,dupIds:0,excludedBeforeCutoff:0,excludedInvalidDate:0,earliestDate:null,latestDate:null}};
   const keyMap={};
   Object.keys(raw[0]).forEach(rk=>{keyMap[rk.toLowerCase().replace(/\s+/g,' ').trim()]=rk;});
   const utmAliases=['utm campaign','campaign','utm_campaign'];
@@ -380,16 +383,29 @@ function parseHeroLeadRows(raw){
     return'';
   }
   const rows=[];
+  let excludedBeforeCutoff=0,excludedInvalidDate=0;
+  let earliestDate=null,latestDate=null;
   for(const r of raw){
     const opty_id=get(r,['opty_id','opty id','lead id','leadid','lead_id','opportunity id','opportunity_id']);
     const lead_month_raw=get(r,['lead month','lead_month','leadmonth','month']);
     const lead_month=normalizeHeroMonth(lead_month_raw);
-    if(!opty_id||!lead_month)continue;
-    // Parse lead creation date for cutoff and dispersion calculation
+    if(!opty_id||!lead_month)continue; // structural skip (not counted in cutoff diagnostics)
+    // Try day-level date first from a dedicated date column; fall back to parsing lead_month_raw
     const dateRaw=get(r,['opty created date','opty_created_date','created date','created_date','lead date','lead_date','lead created date','leadcreateddate','creation date','creation_date','createdon']);
-    let leadDate=parseHeroDate(dateRaw)||parseHeroDate(lead_month_raw);
-    // Apply data cutoff: exclude records before 03-Aug-2026
-    if(leadDate&&leadDate<DATA_CUTOFF)continue;
+    const leadDate=parseHeroDate(dateRaw)||parseHeroDate(lead_month_raw);
+    if(leadDate&&!isNaN(leadDate.getTime())){
+      // Strict day-level cutoff
+      if(leadDate<DATA_CUTOFF){excludedBeforeCutoff++;continue;}
+    } else {
+      // No day-level date — apply month-level rule:
+      // Only include if month is unambiguously >= Sep'2026 (month order > Aug'2026 boundary)
+      const mo=heroMonthOrder(lead_month);
+      if(mo===0||mo<CUTOFF_MONTH_ORDER_CLEAR){
+        // Aug'2026 or earlier without day info — cannot confirm >= 03-Aug, exclude
+        excludedInvalidDate++;continue;
+      }
+      // Sep'2026+ with no exact date — allow but store null leadDate (dispersion won't count this row)
+    }
     const lt=get(r,['lt','lead type','leadtype','lead_type']);
     const source=get(r,['medium','source','lead source','leadsource']);
     const model=get(r,['model','vehicle model','vehiclemodel','bike model']);
@@ -397,14 +413,18 @@ function parseHeroLeadRows(raw){
     const state=get(r,['state','lead state']);
     const dup=get(r,['duplicate check','duplicity check','duplicate','is duplicate','isdup','is_duplicate']);
     const isUnique=dup?dup.toLowerCase()==='unique':true;
+    if(leadDate){
+      if(!earliestDate||leadDate<earliestDate)earliestDate=leadDate;
+      if(!latestDate||leadDate>latestDate)latestDate=leadDate;
+    }
     rows.push({
       opty_id,lt:lt||'Unknown',source:source||'Unknown',
       model:canonicalModel(model)||'Unknown',city:city||'Unknown',state:canonicalState(state)||'Unknown',
-      lead_month,leadDate,isUnique
+      lead_month,leadDate:leadDate||null,isUnique
     });
   }
   const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
-  return{rows,diagnostics:{totalRows:raw.length,uniqueIds,dupIds:rows.length-uniqueIds}};
+  return{rows,diagnostics:{totalRows:raw.length,included:rows.length,uniqueIds,dupIds:rows.length-uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestDate,latestDate}};
 }
 
 function parseHeroRetailRows(raw){
@@ -421,17 +441,22 @@ function parseHeroRetailRows(raw){
   }
   const rows=[];
   let maxRetailDate=null;
+  let excludedBeforeCutoff=0,excludedInvalidDate=0;
+  let earliestRetailDate=null,latestRetailDate=null;
   for(const r of raw){
     const proc=get(r,['process','brand','oem','manufacturer']);
     if(proc&&proc.toLowerCase()!=='hero')continue;
     const sourceLeadId=get(r,['sourcelead id','sourcelead_id','source lead id','source_lead_id','sourceleadid','lead id','leadid']);
     const performanceMonth=normalizeHeroMonth(get(r,['performance month','performancemonth','performance_month','retail month','retailmonth','month']));
     if(!sourceLeadId||!performanceMonth)continue;
-    // Extract and filter by Retail_Attribution_Date (cutoff: 03-Aug-2026)
+    // Retail_Attribution_Date is REQUIRED — rows without a valid parseable date are excluded
     const dateStr=get(r,['retail_attribution_date','retailattributiondate','attribution date','attribution_date','retail date','retaildate','retail_date']);
     const retailDate=parseHeroDate(dateStr);
-    if(retailDate&&retailDate<DATA_CUTOFF)continue; // exclude pre-cutoff retail records
-    if(retailDate&&!isNaN(retailDate.getTime())&&(!maxRetailDate||retailDate>maxRetailDate))maxRetailDate=retailDate;
+    if(!retailDate||isNaN(retailDate.getTime())){excludedInvalidDate++;continue;}
+    if(retailDate<DATA_CUTOFF){excludedBeforeCutoff++;continue;}
+    if(!maxRetailDate||retailDate>maxRetailDate)maxRetailDate=retailDate;
+    if(!earliestRetailDate||retailDate<earliestRetailDate)earliestRetailDate=retailDate;
+    if(!latestRetailDate||retailDate>latestRetailDate)latestRetailDate=retailDate;
     // Extract Call Type (DMS vs Call Out)
     const ctRaw=get(r,['call type','calltype','call_type','call-type']);
     const ctLow=ctRaw.toLowerCase();
@@ -439,7 +464,7 @@ function parseHeroRetailRows(raw){
     rows.push({sourceLeadId,performanceMonth,callType,retailDate});
   }
   const uniqueIds=new Set(rows.map(r=>r.sourceLeadId)).size;
-  return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds},maxRetailDate};
+  return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestRetailDate,latestRetailDate},maxRetailDate};
 }
 
 function joinHeroData(leadResult,retailResult){
@@ -464,23 +489,32 @@ function joinHeroData(leadResult,retailResult){
       leadDate:lr.leadDate||null,retailDate};
   });
   return{rows:joined,diagnostics:{
-    leadTotalRows:leadDiag.totalRows,leadUniqueIds:leadDiag.uniqueIds,leadDupIds:leadDiag.dupIds,
+    leadTotalRows:leadDiag.totalRows,leadIncluded:leadDiag.included,leadUniqueIds:leadDiag.uniqueIds,leadDupIds:leadDiag.dupIds,
+    leadExcludedBeforeCutoff:leadDiag.excludedBeforeCutoff,leadExcludedInvalidDate:leadDiag.excludedInvalidDate,
+    leadEarliestDate:leadDiag.earliestDate,leadLatestDate:leadDiag.latestDate,
     retailTotalRows:retailDiag.totalRows,retailHeroRows:retailDiag.heroRows,retailUniqueIds:retailDiag.uniqueIds,
+    retailExcludedBeforeCutoff:retailDiag.excludedBeforeCutoff,retailExcludedInvalidDate:retailDiag.excludedInvalidDate,
+    retailEarliestDate:retailDiag.earliestRetailDate,retailLatestDate:retailDiag.latestRetailDate,
     matched,unmatched,multiRetail}};
 }
 
 function HeroDiagnostics({d,visible,onToggle}){
   if(!d)return null;
+  const fmt=v=>typeof v==='number'?v.toLocaleString('en-IN'):(v instanceof Date&&!isNaN(v)?formatRetailDate(v):String(v??'—'));
   const items=[
-    {l:'Lead rows',v:d.leadTotalRows},{l:'Unique IDs',v:d.leadUniqueIds},
-    {l:'Retail rows',v:d.retailTotalRows},{l:'Hero retail',v:d.retailHeroRows},
+    {l:'Lead raw',v:d.leadTotalRows},{l:'Lead incl.',v:d.leadIncluded||d.leadUniqueIds},
+    {l:'Lead excl. cutoff',v:d.leadExcludedBeforeCutoff??'—'},{l:'Lead excl. date?',v:d.leadExcludedInvalidDate??'—'},
+    {l:'Lead earliest',v:d.leadEarliestDate||'—'},{l:'Lead latest',v:d.leadLatestDate||'—'},
+    {l:'Retail raw',v:d.retailTotalRows},{l:'Retail incl.',v:d.retailHeroRows},
+    {l:'Retail excl. cutoff',v:d.retailExcludedBeforeCutoff??'—'},{l:'Retail excl. date?',v:d.retailExcludedInvalidDate??'—'},
+    {l:'Retail earliest',v:d.retailEarliestDate||'—'},{l:'Retail latest',v:d.retailLatestDate||'—'},
     {l:'Matched',v:d.matched},{l:'Unmatched',v:d.unmatched},
   ];
   return ce('div',{style:{background:'#FFF7ED',borderBottom:'1px solid #FDBA74',padding:'5px 24px',fontSize:10,fontFamily:'DM Mono,monospace',color:'#7C2D12',cursor:'pointer'},onClick:onToggle},
     ce('span',{style:{fontWeight:700,marginRight:8}},'Data:'),
     visible
-      ?ce('span',null,items.map((it,i)=>ce('span',{key:i,style:{marginRight:14}},it.l+': ',ce('strong',null,it.v.toLocaleString('en-IN')))))
-      :ce('span',null,d.leadUniqueIds.toLocaleString('en-IN')+' leads · '+d.retailHeroRows.toLocaleString('en-IN')+' retail · '+d.matched.toLocaleString('en-IN')+' matched ',ce('span',{style:{color:'#EA580C'}},'▼'))
+      ?ce('span',null,items.map((it,i)=>ce('span',{key:i,style:{marginRight:14}},it.l+': ',ce('strong',null,fmt(it.v)))))
+      :ce('span',null,(d.leadIncluded??d.leadUniqueIds).toLocaleString('en-IN')+' leads · '+d.retailHeroRows.toLocaleString('en-IN')+' retail · '+d.matched.toLocaleString('en-IN')+' matched ',ce('span',{style:{color:'#EA580C'}},'▼'))
   );
 }
 
@@ -3532,6 +3566,25 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       setData({...payload, retailTillDate: retailResult.maxRetailDate});
       setDiagnostics(diag);
       setLastSynced(new Date());
+      // Browser QA diagnostic — open DevTools console to read live data summary
+      console.group('[Hero LDR] Data load summary (cutoff: 03-Aug-2026)');
+      console.log('LEAD MASTER');
+      console.table({
+        'Raw rows':diag.leadTotalRows,'Included':diag.leadIncluded,'Excluded before cutoff':diag.leadExcludedBeforeCutoff,
+        'Excluded invalid/missing date':diag.leadExcludedInvalidDate,
+        'Earliest included date':diag.leadEarliestDate?formatRetailDate(diag.leadEarliestDate):'—',
+        'Latest included date':diag.leadLatestDate?formatRetailDate(diag.leadLatestDate):'—',
+      });
+      console.log('RETAIL MASTER');
+      console.table({
+        'Raw rows':diag.retailTotalRows,'Hero rows included':diag.retailHeroRows,
+        'Excluded before cutoff':diag.retailExcludedBeforeCutoff,'Excluded invalid/missing date':diag.retailExcludedInvalidDate,
+        'Earliest Retail_Attribution_Date':diag.retailEarliestDate?formatRetailDate(diag.retailEarliestDate):'—',
+        'Latest Retail_Attribution_Date (=Retail Till Date)':retailResult.maxRetailDate?formatRetailDate(retailResult.maxRetailDate):'—',
+      });
+      console.log('RECONCILIATION');
+      console.table({'Joined rows (total leads)':joined.length,'Matched (retailed)':diag.matched,'Unmatched':diag.unmatched,'bdm rows (dispersion)':payload.bdm.length});
+      console.groupEnd();
     }catch(e){setSyncErr(e.message);}
     finally{setSyncing(false);}
   },[]);
