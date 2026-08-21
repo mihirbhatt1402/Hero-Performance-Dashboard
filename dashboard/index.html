@@ -355,10 +355,29 @@ function normalizeHeroMonth(s){
 function parseHeroDate(s){
   if(!s)return null;
   s=String(s).trim();
+  if(!s)return null;
+  // YYYY-MM-DD or YYYY/MM/DD
   const m1=s.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})$/);
   if(m1)return new Date(+m1[1],+m1[2]-1,+m1[3]);
+  // DD/MM/YYYY or DD-MM-YYYY (numeric parts only)
   const m2=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if(m2)return new Date(+m2[3],+m2[2]-1,+m2[1]);
+  // DD-Mon-YYYY or DD/Mon/YYYY or DD Mon YYYY (e.g. 03-Aug-2026, 03/Aug/2026)
+  const MONS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const m3=s.match(/^(\d{1,2})[\-\/\s]([A-Za-z]{3,9})[\-\/\s](\d{4})$/);
+  if(m3){const mi=MONS.findIndex(n=>m3[2].toLowerCase().startsWith(n));if(mi>=0)return new Date(+m3[3],mi,+m3[1]);}
+  // Mon-DD-YYYY or Mon/DD/YYYY (e.g. Aug-03-2026)
+  const m4=s.match(/^([A-Za-z]{3,9})[\-\/\s](\d{1,2})[\-\/\s](\d{4})$/);
+  if(m4){const mi=MONS.findIndex(n=>m4[1].toLowerCase().startsWith(n));if(mi>=0)return new Date(+m4[3],mi,+m4[2]);}
+  // Excel serial date (numeric only, valid range 30000–60000 ≈ 1982–2064)
+  if(/^\d+(\.\d+)?$/.test(s)){
+    const serial=parseFloat(s);
+    if(serial>30000&&serial<60000){
+      const d=new Date(Date.UTC(1899,11,30));
+      d.setUTCDate(d.getUTCDate()+Math.floor(serial));
+      return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate());
+    }
+  }
   return null;
 }
 // 03-Aug-2026: records before this date are excluded.
@@ -395,9 +414,19 @@ function parseHeroLeadRows(raw){
     }
   }
   const detectedDateCol=leadDateColKey||'(not found — using lead_month_raw fallback)';
+  // Collect up to 5 non-empty sample values from the detected date column for in-page diagnostics
+  const sampleDateValues=[];
+  if(leadDateColKey){
+    for(let i=0;i<Math.min(raw.length,30)&&sampleDateValues.length<5;i++){
+      const v=String(raw[i][leadDateColKey]||'').trim();
+      if(v)sampleDateValues.push({raw:v,parsed:parseHeroDate(v)?formatRetailDate(parseHeroDate(v)):null});
+    }
+  }
+  const allLeadCols=Object.keys(raw[0]);
   if(!parseHeroLeadRows._colLogged){
     parseHeroLeadRows._colLogged=true;
     console.log('[Hero LDR] Lead date column detected as:',detectedDateCol,'| All date-like keys:',Object.keys(keyMap).filter(k=>k.includes('date')||k.includes('creat')));
+    console.log('[Hero LDR] Lead sample date values:',sampleDateValues);
   }
   function get(r,keys){
     for(const k of(Array.isArray(keys)?keys:[keys])){
@@ -451,7 +480,7 @@ function parseHeroLeadRows(raw){
     });
   }
   const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
-  return{rows,diagnostics:{totalRows:raw.length,included:rows.length,uniqueIds,dupIds:rows.length-uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestDate,latestDate,detectedDateCol}};
+  return{rows,diagnostics:{totalRows:raw.length,included:rows.length,uniqueIds,dupIds:rows.length-uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestDate,latestDate,detectedDateCol,sampleDateValues,allLeadCols}};
 }
 
 function parseHeroRetailRows(raw){
@@ -475,9 +504,18 @@ function parseHeroRetailRows(raw){
       }
     }
   }
+  const sampleRetailDateValues=[];
+  if(retailDateColKey){
+    for(let i=0;i<Math.min(raw.length,30)&&sampleRetailDateValues.length<5;i++){
+      const v=String(raw[i][retailDateColKey]||'').trim();
+      if(v)sampleRetailDateValues.push({raw:v,parsed:parseHeroDate(v)?formatRetailDate(parseHeroDate(v)):null});
+    }
+  }
+  const allRetailCols=Object.keys(raw[0]);
   if(!parseHeroRetailRows._colLogged){
     parseHeroRetailRows._colLogged=true;
     console.log('[Hero LDR] Retail attribution date column detected as:',retailDateColKey||'(not found)','| attribution/date-like keys:',Object.keys(keyMap).filter(k=>k.includes('attribution')||k.includes('retail')));
+    console.log('[Hero LDR] Retail sample date values:',sampleRetailDateValues);
   }
   function get(r,keys){
     for(const k of(Array.isArray(keys)?keys:[keys])){
@@ -512,7 +550,7 @@ function parseHeroRetailRows(raw){
     rows.push({sourceLeadId,performanceMonth,callType,retailDate});
   }
   const uniqueIds=new Set(rows.map(r=>r.sourceLeadId)).size;
-  return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestRetailDate,latestRetailDate,detectedDateCol:retailDateColKey||'(not found)'},maxRetailDate};
+  return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestRetailDate,latestRetailDate,detectedDateCol:retailDateColKey||'(not found)',sampleRetailDateValues,allRetailCols},maxRetailDate};
 }
 
 function joinHeroData(leadResult,retailResult){
@@ -551,18 +589,49 @@ function HeroDiagnostics({d,visible,onToggle}){
   const fmt=v=>typeof v==='number'?v.toLocaleString('en-IN'):(v instanceof Date&&!isNaN(v)?formatRetailDate(v):String(v??'—'));
   const items=[
     {l:'Lead raw',v:d.leadTotalRows},{l:'Lead incl.',v:d.leadIncluded||d.leadUniqueIds},
-    {l:'Lead excl. cutoff',v:d.leadExcludedBeforeCutoff??'—'},{l:'Lead excl. date?',v:d.leadExcludedInvalidDate??'—'},
+    {l:'Excl cutoff',v:d.leadExcludedBeforeCutoff??'—'},{l:'Excl invalid',v:d.leadExcludedInvalidDate??'—'},
     {l:'Lead earliest',v:d.leadEarliestDate||'—'},{l:'Lead latest',v:d.leadLatestDate||'—'},
     {l:'Retail raw',v:d.retailTotalRows},{l:'Retail incl.',v:d.retailHeroRows},
-    {l:'Retail excl. cutoff',v:d.retailExcludedBeforeCutoff??'—'},{l:'Retail excl. date?',v:d.retailExcludedInvalidDate??'—'},
+    {l:'Ret excl cutoff',v:d.retailExcludedBeforeCutoff??'—'},{l:'Ret excl invalid',v:d.retailExcludedInvalidDate??'—'},
     {l:'Retail earliest',v:d.retailEarliestDate||'—'},{l:'Retail latest',v:d.retailLatestDate||'—'},
     {l:'Matched',v:d.matched},{l:'Unmatched',v:d.unmatched},
   ];
-  return ce('div',{style:{background:'#FFF7ED',borderBottom:'1px solid #FDBA74',padding:'5px 24px',fontSize:10,fontFamily:'DM Mono,monospace',color:'#7C2D12',cursor:'pointer'},onClick:onToggle},
-    ce('span',{style:{fontWeight:700,marginRight:8}},'Data:'),
-    visible
-      ?ce('span',null,items.map((it,i)=>ce('span',{key:i,style:{marginRight:14}},it.l+': ',ce('strong',null,fmt(it.v)))))
-      :ce('span',null,(d.leadIncluded??d.leadUniqueIds).toLocaleString('en-IN')+' leads · '+d.retailHeroRows.toLocaleString('en-IN')+' retail · '+d.matched.toLocaleString('en-IN')+' matched ',ce('span',{style:{color:'#EA580C'}},'▼'))
+  const sty={background:'#FFF7ED',borderBottom:'1px solid #FDBA74',padding:'5px 24px',fontSize:10,fontFamily:'DM Mono,monospace',color:'#7C2D12'};
+  if(!visible){
+    return ce('div',{style:{...sty,cursor:'pointer'},onClick:onToggle},
+      ce('span',{style:{fontWeight:700,marginRight:8}},'Data:'),
+      ce('span',null,(d.leadIncluded??d.leadUniqueIds).toLocaleString('en-IN')+' leads · '+d.retailHeroRows.toLocaleString('en-IN')+' retail · '+d.matched.toLocaleString('en-IN')+' matched'),
+      ce('span',{style:{color:'#EA580C',marginLeft:6}},'▼ expand')
+    );
+  }
+  return ce('div',{style:{...sty,padding:'8px 24px',cursor:'default'}},
+    ce('div',{style:{display:'flex',flexWrap:'wrap',gap:'6px 14px',marginBottom:6}},
+      items.map((it,i)=>ce('span',{key:i},it.l+': ',ce('strong',null,fmt(it.v)))),
+      ce('span',{style:{cursor:'pointer',color:'#EA580C'},onClick:onToggle},'▲ collapse')
+    ),
+    ce('div',{style:{borderTop:'1px solid #FDBA74',paddingTop:5,marginTop:3}},
+      ce('strong',null,'[HERO QA] Column detection:'),
+      ce('br'),
+      ce('span',null,'Lead date col: ',ce('strong',{style:{color:'#9A3412'}},d.leadDateCol||'(checking…)')),
+      d.leadSampleDates&&d.leadSampleDates.length>0&&ce('span',null,
+        ' | Samples: ',
+        d.leadSampleDates.map((s,i)=>ce('span',{key:i,style:{marginRight:8,color:s.parsed?'#166534':'#B91C1C'}},
+          '"'+s.raw+'" → '+(s.parsed||'UNPARSEABLE')
+        ))
+      ),
+      ce('br'),
+      ce('span',null,'Retail date col: ',ce('strong',{style:{color:'#9A3412'}},d.retailDateCol||'(checking…)')),
+      d.retailSampleDates&&d.retailSampleDates.length>0&&ce('span',null,
+        ' | Samples: ',
+        d.retailSampleDates.map((s,i)=>ce('span',{key:i,style:{marginRight:8,color:s.parsed?'#166534':'#B91C1C'}},
+          '"'+s.raw+'" → '+(s.parsed||'UNPARSEABLE')
+        ))
+      ),
+      ce('br'),
+      ce('span',null,'Lead cols ('+((d.leadCols||[]).length)+'): ',ce('span',{style:{color:'#475569'}},(d.leadCols||[]).join(', '))),
+      ce('br'),
+      ce('span',null,'Retail cols ('+((d.retailCols||[]).length)+'): ',ce('span',{style:{color:'#475569'}},(d.retailCols||[]).join(', ')))
+    )
   );
 }
 
@@ -3611,29 +3680,48 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       const{rows:joined,diagnostics:diag}=joinHeroData(leadResult,retailResult);
       if(!joined.length)throw new Error('No rows after join. Check opty_id / sourceLeadId column names.');
       const payload=buildPayload(joined);
+      // Attach column/sample info to diagnostics for in-page display
+      diag.leadCols=leadResult.diagnostics.allLeadCols||[];
+      diag.leadSampleDates=leadResult.diagnostics.sampleDateValues||[];
+      diag.leadDateCol=leadResult.diagnostics.detectedDateCol||'(not found)';
+      diag.retailCols=retailResult.diagnostics.allRetailCols||[];
+      diag.retailSampleDates=retailResult.diagnostics.sampleRetailDateValues||[];
+      diag.retailDateCol=retailResult.diagnostics.detectedDateCol||'(not found)';
       setData({...payload, retailTillDate: retailResult.maxRetailDate});
       setDiagnostics(diag);
       setLastSynced(new Date());
-      // Browser QA diagnostic — open DevTools console to read live data summary
-      console.group('[Hero LDR] Data load summary (cutoff: 03-Aug-2026)');
-      console.log('LEAD MASTER');
-      console.table({
-        'Raw rows':diag.leadTotalRows,'Included':diag.leadIncluded,'Excluded before cutoff':diag.leadExcludedBeforeCutoff,
-        'Excluded invalid/missing date':diag.leadExcludedInvalidDate,
-        'Detected date column':leadResult.diagnostics.detectedDateCol,
-        'Earliest included date':diag.leadEarliestDate?formatRetailDate(diag.leadEarliestDate):'—',
-        'Latest included date':diag.leadLatestDate?formatRetailDate(diag.leadLatestDate):'—',
-      });
-      console.log('RETAIL MASTER');
-      console.table({
-        'Raw rows':diag.retailTotalRows,'Hero rows included':diag.retailHeroRows,
-        'Excluded before cutoff':diag.retailExcludedBeforeCutoff,'Excluded invalid/missing date':diag.retailExcludedInvalidDate,
-        'Detected attribution date column':retailResult.diagnostics.detectedDateCol||'(not found)',
-        'Earliest Retail_Attribution_Date':diag.retailEarliestDate?formatRetailDate(diag.retailEarliestDate):'—',
-        'Latest Retail_Attribution_Date (=Retail Till Date)':retailResult.maxRetailDate?formatRetailDate(retailResult.maxRetailDate):'—',
-      });
-      console.log('RECONCILIATION');
-      console.table({'Joined rows (total leads)':joined.length,'Matched (retailed)':diag.matched,'Unmatched':diag.unmatched,'bdm rows (dispersion)':payload.bdm.length});
+      // [HERO QA] console output
+      const ld=leadResult.diagnostics,rd=retailResult.diagnostics;
+      console.group('[HERO QA] Data load — cutoff: 03-Aug-2026');
+      console.log('[HERO QA] DATA CUTOFF: 03-Aug-2026');
+      console.log('[HERO QA] Lead Master:',
+        'Raw='+ld.totalRows,
+        '| Included='+ld.included,
+        '| Excl before cutoff='+ld.excludedBeforeCutoff,
+        '| Excl invalid/missing='+ld.excludedInvalidDate,
+        '| Earliest='+(ld.earliestDate?formatRetailDate(ld.earliestDate):'—'),
+        '| Latest='+(ld.latestDate?formatRetailDate(ld.latestDate):'—'),
+        '| DateCol='+ld.detectedDateCol
+      );
+      if(ld.sampleDateValues&&ld.sampleDateValues.length)console.log('[HERO QA] Lead sample dates:',ld.sampleDateValues.map(x=>x.raw+' → '+(x.parsed||'UNPARSEABLE')).join(' | '));
+      else console.log('[HERO QA] Lead sample dates: (none — date column not detected or empty)');
+      console.log('[HERO QA] Retail Master:',
+        'Raw='+rd.totalRows,
+        '| Hero raw='+rd.heroRows,
+        '| Included='+rd.heroRows,
+        '| Excl before cutoff='+rd.excludedBeforeCutoff,
+        '| Excl invalid/missing='+rd.excludedInvalidDate,
+        '| Earliest='+(rd.earliestRetailDate?formatRetailDate(rd.earliestRetailDate):'—'),
+        '| Latest='+(rd.latestRetailDate?formatRetailDate(rd.latestRetailDate):'—'),
+        '| DateCol='+rd.detectedDateCol
+      );
+      if(rd.sampleRetailDateValues&&rd.sampleRetailDateValues.length)console.log('[HERO QA] Retail sample dates:',rd.sampleRetailDateValues.map(x=>x.raw+' → '+(x.parsed||'UNPARSEABLE')).join(' | '));
+      else console.log('[HERO QA] Retail sample dates: (none — date column not detected or empty)');
+      console.log('[HERO QA] Retail Till Date:',retailResult.maxRetailDate?formatRetailDate(retailResult.maxRetailDate):'— (no valid retail dates found)');
+      console.log('[HERO QA] Booked with both dates (bdm eligible):',joined.filter(r=>r.isBooked&&r.leadDate&&r.retailDate).length);
+      console.log('[HERO QA] BDM rows:',payload.bdm.length);
+      console.log('[HERO QA] Lead Master ALL COLUMNS:',ld.allLeadCols);
+      console.log('[HERO QA] Retail Master ALL COLUMNS:',rd.allRetailCols);
       console.groupEnd();
     }catch(e){setSyncErr(e.message);}
     finally{setSyncing(false);}
