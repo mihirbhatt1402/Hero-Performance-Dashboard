@@ -367,13 +367,38 @@ const DATA_CUTOFF=new Date(2026,7,3);
 const CUTOFF_MONTH_ORDER_CLEAR=heroMonthOrder("Sep'2026"); // month >= Sep'2026 is unambiguously post-cutoff
 
 function parseHeroLeadRows(raw){
-  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,uniqueIds:0,dupIds:0,excludedBeforeCutoff:0,excludedInvalidDate:0,earliestDate:null,latestDate:null}};
+  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,included:0,uniqueIds:0,dupIds:0,excludedBeforeCutoff:0,excludedInvalidDate:0,earliestDate:null,latestDate:null,detectedDateCol:'(none)'}};
   const keyMap={};
   Object.keys(raw[0]).forEach(rk=>{keyMap[rk.toLowerCase().replace(/\s+/g,' ').trim()]=rk;});
+  // Log actual columns once per page load to help diagnose column name mismatches
+  if(!parseHeroLeadRows._logged){
+    parseHeroLeadRows._logged=true;
+    console.log('[Hero LDR] Lead Master actual columns:',Object.keys(raw[0]));
+  }
   const utmAliases=['utm campaign','campaign','utm_campaign'];
   let utmRawKey=null;
   for(const alias of utmAliases){if(keyMap[alias]){utmRawKey=keyMap[alias];break;}}
   if(!utmRawKey){const found=Object.keys(keyMap).find(k=>k.includes('utm'));if(found)utmRawKey=keyMap[found];}
+  // Detect lead-date column: try named aliases, then broad key scan for 'date'/'creat'/'time' substrings
+  const DATE_ALIASES=['opty created date','opty_created_date','created date','created_date','lead date',
+    'lead_date','lead created date','leadcreateddate','creation date','creation_date','createdon',
+    'opty date','optydate','opportunity created date','opty creation date','date'];
+  let leadDateColKey=null;
+  for(const alias of DATE_ALIASES){if(keyMap[alias]){leadDateColKey=keyMap[alias];break;}}
+  if(!leadDateColKey){
+    // Broad scan: pick first column whose name contains 'date','creat','time' that has a parseable date in any row
+    for(const [k,rk] of Object.entries(keyMap)){
+      if(k.includes('date')||k.includes('creat')||k.includes('time')){
+        const sampleDate=parseHeroDate(String(raw[0][rk]||'').trim())||parseHeroDate(String(raw[Math.min(1,raw.length-1)][rk]||'').trim());
+        if(sampleDate){leadDateColKey=rk;break;}
+      }
+    }
+  }
+  const detectedDateCol=leadDateColKey||'(not found — using lead_month_raw fallback)';
+  if(!parseHeroLeadRows._colLogged){
+    parseHeroLeadRows._colLogged=true;
+    console.log('[Hero LDR] Lead date column detected as:',detectedDateCol,'| All date-like keys:',Object.keys(keyMap).filter(k=>k.includes('date')||k.includes('creat')));
+  }
   function get(r,keys){
     for(const k of(Array.isArray(keys)?keys:[keys])){
       const kl=k.toLowerCase().replace(/\s+/g,' ').trim();
@@ -390,21 +415,23 @@ function parseHeroLeadRows(raw){
     const lead_month_raw=get(r,['lead month','lead_month','leadmonth','month']);
     const lead_month=normalizeHeroMonth(lead_month_raw);
     if(!opty_id||!lead_month)continue; // structural skip (not counted in cutoff diagnostics)
-    // Try day-level date first from a dedicated date column; fall back to parsing lead_month_raw
-    const dateRaw=get(r,['opty created date','opty_created_date','created date','created_date','lead date','lead_date','lead created date','leadcreateddate','creation date','creation_date','createdon']);
+    // Determine lead date: prefer dedicated date column, fall back to lead_month_raw (works if it contains a full date like DD/MM/YYYY or YYYY-MM-DD)
+    const dateRaw=leadDateColKey?String(r[leadDateColKey]||'').trim():'';
     const leadDate=parseHeroDate(dateRaw)||parseHeroDate(lead_month_raw);
     if(leadDate&&!isNaN(leadDate.getTime())){
-      // Strict day-level cutoff
+      // Day-level cutoff: exclude records before 03-Aug-2026
       if(leadDate<DATA_CUTOFF){excludedBeforeCutoff++;continue;}
     } else {
-      // No day-level date — apply month-level rule:
-      // Only include if month is unambiguously >= Sep'2026 (month order > Aug'2026 boundary)
+      // No parseable day-level date found anywhere for this row
+      // Month-level fallback: if month is unambiguously before Aug'2026 → exclude (before cutoff)
+      // If month is Aug'2026 → cannot confirm >= 3rd without day → exclude (invalid date)
+      // If month is Sep'2026+ → include (clearly past cutoff)
       const mo=heroMonthOrder(lead_month);
-      if(mo===0||mo<CUTOFF_MONTH_ORDER_CLEAR){
-        // Aug'2026 or earlier without day info — cannot confirm >= 03-Aug, exclude
-        excludedInvalidDate++;continue;
-      }
-      // Sep'2026+ with no exact date — allow but store null leadDate (dispersion won't count this row)
+      const augOrder=heroMonthOrder("Aug'2026");
+      if(mo===0){excludedInvalidDate++;continue;} // unparseable month
+      if(mo<augOrder){excludedBeforeCutoff++;continue;} // strictly before Aug'2026
+      if(mo===augOrder){excludedInvalidDate++;continue;} // Aug'2026 without day: can't confirm >= 3rd
+      // Sep'2026+ without day: include (clearly past cutoff) with null leadDate (won't populate bdm)
     }
     const lt=get(r,['lt','lead type','leadtype','lead_type']);
     const source=get(r,['medium','source','lead source','leadsource']);
@@ -424,13 +451,34 @@ function parseHeroLeadRows(raw){
     });
   }
   const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
-  return{rows,diagnostics:{totalRows:raw.length,included:rows.length,uniqueIds,dupIds:rows.length-uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestDate,latestDate}};
+  return{rows,diagnostics:{totalRows:raw.length,included:rows.length,uniqueIds,dupIds:rows.length-uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestDate,latestDate,detectedDateCol}};
 }
 
 function parseHeroRetailRows(raw){
-  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,heroRows:0,uniqueIds:0}};
+  if(!raw.length)return{rows:[],diagnostics:{totalRows:0,heroRows:0,uniqueIds:0,excludedBeforeCutoff:0,excludedInvalidDate:0,earliestRetailDate:null,latestRetailDate:null,detectedDateCol:'(none)'}};
   const keyMap={};
   Object.keys(raw[0]).forEach(rk=>{keyMap[rk.toLowerCase().replace(/\s+/g,' ').trim()]=rk;});
+  if(!parseHeroRetailRows._logged){
+    parseHeroRetailRows._logged=true;
+    console.log('[Hero LDR] Retail Master actual columns:',Object.keys(raw[0]));
+  }
+  // Detect retail attribution date column
+  const RETAIL_DATE_ALIASES=['retail_attribution_date','retailattributiondate','attribution date','attribution_date',
+    'retail date','retaildate','retail_date','attributiondate'];
+  let retailDateColKey=null;
+  for(const alias of RETAIL_DATE_ALIASES){if(keyMap[alias]){retailDateColKey=keyMap[alias];break;}}
+  if(!retailDateColKey){
+    for(const [k,rk] of Object.entries(keyMap)){
+      if(k.includes('attribution')||(k.includes('retail')&&k.includes('date'))){
+        const sampleDate=parseHeroDate(String(raw[0][rk]||'').trim());
+        if(sampleDate){retailDateColKey=rk;break;}
+      }
+    }
+  }
+  if(!parseHeroRetailRows._colLogged){
+    parseHeroRetailRows._colLogged=true;
+    console.log('[Hero LDR] Retail attribution date column detected as:',retailDateColKey||'(not found)','| attribution/date-like keys:',Object.keys(keyMap).filter(k=>k.includes('attribution')||k.includes('retail')));
+  }
   function get(r,keys){
     for(const k of(Array.isArray(keys)?keys:[keys])){
       const kl=k.toLowerCase().replace(/\s+/g,' ').trim();
@@ -449,8 +497,8 @@ function parseHeroRetailRows(raw){
     const sourceLeadId=get(r,['sourcelead id','sourcelead_id','source lead id','source_lead_id','sourceleadid','lead id','leadid']);
     const performanceMonth=normalizeHeroMonth(get(r,['performance month','performancemonth','performance_month','retail month','retailmonth','month']));
     if(!sourceLeadId||!performanceMonth)continue;
-    // Retail_Attribution_Date is REQUIRED — rows without a valid parseable date are excluded
-    const dateStr=get(r,['retail_attribution_date','retailattributiondate','attribution date','attribution_date','retail date','retaildate','retail_date']);
+    // Retail_Attribution_Date is REQUIRED — null/unparseable = exclude (cannot confirm >= cutoff)
+    const dateStr=retailDateColKey?String(r[retailDateColKey]||'').trim():get(r,['retail_attribution_date','retailattributiondate','attribution date','attribution_date','retail date','retaildate','retail_date']);
     const retailDate=parseHeroDate(dateStr);
     if(!retailDate||isNaN(retailDate.getTime())){excludedInvalidDate++;continue;}
     if(retailDate<DATA_CUTOFF){excludedBeforeCutoff++;continue;}
@@ -464,7 +512,7 @@ function parseHeroRetailRows(raw){
     rows.push({sourceLeadId,performanceMonth,callType,retailDate});
   }
   const uniqueIds=new Set(rows.map(r=>r.sourceLeadId)).size;
-  return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestRetailDate,latestRetailDate},maxRetailDate};
+  return{rows,diagnostics:{totalRows:raw.length,heroRows:rows.length,uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestRetailDate,latestRetailDate,detectedDateCol:retailDateColKey||'(not found)'},maxRetailDate};
 }
 
 function joinHeroData(leadResult,retailResult){
@@ -3572,6 +3620,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       console.table({
         'Raw rows':diag.leadTotalRows,'Included':diag.leadIncluded,'Excluded before cutoff':diag.leadExcludedBeforeCutoff,
         'Excluded invalid/missing date':diag.leadExcludedInvalidDate,
+        'Detected date column':leadResult.diagnostics.detectedDateCol,
         'Earliest included date':diag.leadEarliestDate?formatRetailDate(diag.leadEarliestDate):'—',
         'Latest included date':diag.leadLatestDate?formatRetailDate(diag.leadLatestDate):'—',
       });
@@ -3579,6 +3628,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       console.table({
         'Raw rows':diag.retailTotalRows,'Hero rows included':diag.retailHeroRows,
         'Excluded before cutoff':diag.retailExcludedBeforeCutoff,'Excluded invalid/missing date':diag.retailExcludedInvalidDate,
+        'Detected attribution date column':retailResult.diagnostics.detectedDateCol||'(not found)',
         'Earliest Retail_Attribution_Date':diag.retailEarliestDate?formatRetailDate(diag.retailEarliestDate):'—',
         'Latest Retail_Attribution_Date (=Retail Till Date)':retailResult.maxRetailDate?formatRetailDate(retailResult.maxRetailDate):'—',
       });
@@ -3654,7 +3704,8 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
           for(const row of effectiveData.monthly){gL+=row[1];gR+=row[2];}
           return ce('div',{style:{flex:1,display:'flex',gap:16,overflowX:'auto',padding:'8px 0',borderLeft:'1px solid rgba(255,255,255,.3)',paddingLeft:16,marginLeft:4}},
             [{l:'Leads',v:gL.toLocaleString('en-IN')},{l:'Bookings',v:gR.toLocaleString('en-IN')},
-             {l:'L2R%',v:gL>0?(gR/gL*100).toFixed(1)+'%':'\u2014'},{l:'Months',v:effectiveData.maps.lm.length}]
+             {l:'L2R%',v:gL>0?(gR/gL*100).toFixed(1)+'%':'\u2014'},{l:'Months',v:effectiveData.maps.lm.length},
+             {l:'Retail Till',v:data&&data.retailTillDate?formatRetailDate(data.retailTillDate):'\u2014'}]
             .map((k,i)=>ce('div',{key:i,style:{flexShrink:0,textAlign:'center',minWidth:56}},
               ce('div',{style:{fontSize:8,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'#FED7AA'}},k.l),
               ce('div',{style:{fontSize:13,fontWeight:800,color:'#fff',fontFamily:'DM Mono,monospace',letterSpacing:'-.02em'}},k.v)
