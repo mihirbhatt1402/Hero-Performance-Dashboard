@@ -483,6 +483,7 @@ function parseHeroLeadRows(raw){
     const dealerName=get(r,['dealer_name','dealername','dealer name','dealership name','dealership']);
     const enquiryId=get(r,['enquiry_id','enquiryid','enquiry id','inquiry id','inquiry_id','enquiryid']);
     const utmCampaign=utmRawKey?String(r[utmRawKey]||'').trim():'';
+    const statusName=get(r,['status_name','status name','statusname','status','lead status','lead_status','disposition','lead disposition']);
     if(leadDate){
       if(!earliestDate||leadDate<earliestDate)earliestDate=leadDate;
       if(!latestDate||leadDate>latestDate)latestDate=leadDate;
@@ -491,7 +492,7 @@ function parseHeroLeadRows(raw){
       opty_id,lt:lt||'Unknown',source:source||'Unknown',
       model:canonicalModel(model)||'Unknown',city:city||'Unknown',state:canonicalState(state)||'Unknown',
       lead_month,leadDate:leadDate||null,isUnique,
-      encryptMobile,idVerifiedLead,brand,verifiedDealer,dealerId,oemCrmId,dealerName,enquiryId,utmCampaign
+      encryptMobile,idVerifiedLead,brand,verifiedDealer,dealerId,oemCrmId,dealerName,enquiryId,utmCampaign,statusName
     });
   }
   const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
@@ -627,7 +628,7 @@ function joinHeroData(leadResult,retailResult){
       leadDate:lr.leadDate||null,retailDate,purchasedModel,
       encryptMobile:lr.encryptMobile||'',idVerifiedLead:lr.idVerifiedLead||'',brand:lr.brand||'',
       verifiedDealer:lr.verifiedDealer||'',dealerId:lr.dealerId||'',oemCrmId:lr.oemCrmId||'',
-      dealerName:lr.dealerName||'',enquiryId:lr.enquiryId||'',utmCampaign:lr.utmCampaign||''};
+      dealerName:lr.dealerName||'',enquiryId:lr.enquiryId||'',utmCampaign:lr.utmCampaign||'',statusName:lr.statusName||''};
   });
   return{rows:joined,diagnostics:{
     leadTotalRows:leadDiag.totalRows,leadIncluded:leadDiag.included,leadUniqueIds:leadDiag.uniqueIds,leadDupIds:leadDiag.dupIds,
@@ -1125,14 +1126,16 @@ function exportDetailedCsv(rawJoined, filters, RT, leadsMode, filename, monthOve
       if (cf === FILTER_CLEARED) continue;
       if (!cf.has(r.city)) continue;
     }
-    const isRA = isRetailedLead(r) && (RT === 'all' || r.callType === RT);
+    // Status_Name comes directly from Lead Master; gates columns 19-22
+    const statusName = r.statusName || '';
+    const isRA = statusName === 'Retail Attribution';
     aoa.push([
       r.encryptMobile||'', r.idVerifiedLead||'', r.opty_id,
       fmtD(r.leadDate), r.lead_month, r.brand||'', r.model,
       r.verifiedDealer||'', r.dealerId||'', r.oemCrmId||'',
       r.city, r.state, r.dealerName||'', r.enquiryId||'', r.utmCampaign||'',
       r.lt, r.source,
-      isRA ? 'Retail Attribution' : '',
+      statusName,
       isRA ? (r.purchasedModel||'') : '',
       isRA ? (r.booking_month||'') : '',
       isRA ? (r.callType||'') : '',
