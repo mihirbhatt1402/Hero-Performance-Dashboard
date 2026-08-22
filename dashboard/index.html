@@ -719,6 +719,9 @@ function buildPayload(joinedRows){
   const bdmA=new Map(),u_bdmA=new Map();
   // Retail Dispersion Model matrix: [enq_mi, is_same(1=same/0=cross), lm_idx, count_all, count_dms, count_co, _]
   const rdmA=new Map();
+  // Retail Dispersion Model drill-down matrix: [enq_mi, pur_mi, is_same, si, sti, ci, lti, li, cnt_all, cnt_dms, cnt_co, _]
+  const purMdlArr=[],purMdlMap=Object.create(null);
+  const rdmxA=new Map();
 
   // normMdl: normalise model name for SAME vs CROSS comparison
   function normMdl(s){return(s||'').toLowerCase().replace(/^hero\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();}
@@ -792,6 +795,9 @@ function buildPayload(joinedRows){
         const isSame=(enqN===purN)?1:0;
         const Ra2=1,Rd2=(r.callType==='dms')?1:0,Rc2=(r.callType==='co')?1:0;
         a4(rdmA,mi+'|'+isSame+'|'+si+'|'+sti+'|'+ci+'|'+lti+'|'+li,Ra2,Rd2,Rc2,0);
+        // Drill-down: also accumulate with purchased model dimension
+        const purMI=idx(purMdlArr,purMdlMap,r.purchasedModel||'');
+        a4(rdmxA,mi+'|'+purMI+'|'+isSame+'|'+si+'|'+sti+'|'+ci+'|'+lti+'|'+li,Ra2,Rd2,Rc2,0);
       }
     }
   }
@@ -800,9 +806,10 @@ function buildPayload(joinedRows){
   const f3=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0],v[1],v[2],v[3]];});
   const f5=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e]=k.split('|');return[+a,+b,+c,+d,+e,v[0],v[1],v[2],v[3]];});
   const f7=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e,f,g]=k.split('|');return[+a,+b,+c,+d,+e,+f,+g,v[0],v[1],v[2],v[3]];});
+  const f8=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e,f,g,h]=k.split('|');return[+a,+b,+c,+d,+e,+f,+g,+h,v[0],v[1],v[2],v[3]];});
   return{
     t:now,
-    maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state},
+    maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state,purMdl:purMdlArr},
     // On Create matrices (lead_month dimension)
     monthly:f1(monthlyA),sm:f2(smA),mm:f3(mmA),stm:f3(stmA),ltm:f3(ltmA),
     mxst:f3(mxstA),cm:f2(cmA),csm:f3(csmA),cxm:f3(cxmA),univ:f5(univA),
@@ -811,7 +818,7 @@ function buildPayload(joinedRows){
     // On Update matrices (booking_month dimension)
     bm_monthly:f1(bm_mA),bm_sm:f2(bm_smA),bm_mm:f3(bm_mmA),bm_stm:f3(bm_stmA),bm_ltm:f3(bm_ltmA),
     bm_mxst:f3(bm_mxstA),bm_cm:f2(bm_cmA),bm_csm:f3(bm_csmA),bm_cxm:f3(bm_cxmA),bm_univ:f5(bm_univA),
-    disp:[],u_disp:[],zm:[],u_zm:[],bdm:f3(bdmA),u_bdm:f3(u_bdmA),rdm:f7(rdmA),
+    disp:[],u_disp:[],zm:[],u_zm:[],bdm:f3(bdmA),u_bdm:f3(u_bdmA),rdm:f7(rdmA),rdmx:f8(rdmxA),
     mlt:[],stlt:[],cdm:[],cdsm:[],stcm:[],
     u_mlt:[],u_stlt:[],u_cdm:[],u_cdsm:[],u_stcm:[],
     stdm:[],mxdl:[],ltdl:[],u_stdm:[],u_mxdl:[],u_ltdl:[],
@@ -2527,33 +2534,51 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
 /* ════════════════════════════════════════════════════════════════════
    RETAIL DISPERSION TAB
    Enquired Model vs Purchased Model: SAME / CROSS / TOTAL / DISPERSION%
-   rdm row format: [mi, is_same, si, sti, ci, lti, lm_idx, cnt_all, cnt_dms, cnt_co, _]
+   rdm row format:  [mi, is_same, si, sti, ci, lti, lm_idx, cnt_all, cnt_dms, cnt_co, _]
+   rdmx row format: [mi, pur_mi, is_same, si, sti, ci, lti, lm_idx, cnt_all, cnt_dms, cnt_co, _]
    ════════════════════════════════════════════════════════════════════ */
 const DispersionTab = React.memo(function DispersionTab({ data, filters, months, RT, onDetailedCsv }) {
-  const { maps, rdm } = data;
+  const { maps, rdm, rdmx } = data;
   if (!rdm) return ce('div',{className:'fade-up'},ce('div',{className:'card',style:{padding:32,textAlign:'center',color:'#94A3B8'}},'Retail Dispersion data not yet available. Please sync data.'));
 
-  // RT toggle => which count column: all=7, dms=8, co=9
+  // RT toggle => which count column for rdm: all=7, dms=8, co=9; for rdmx shift by 1
   const rtCol = RT === 'dms' ? 8 : RT === 'co' ? 9 : 7;
+  const rdmxCol = rtCol + 1; // rdmx has purMI at [1], so cnt cols shift by 1
 
-  // Build dispersion map for a given set of months, respecting all active filters
-  function buildTable(monthSet) {
+  // Expand/collapse state: Set of enquired model indices (mi)
+  const [expandedModels, setExpandedModels] = useState(new Set());
+  function toggleExpand(mi) {
+    setExpandedModels(prev => {
+      const next = new Set(prev);
+      if (next.has(mi)) next.delete(mi); else next.add(mi);
+      return next;
+    });
+  }
+
+  // Shared filter check (used by both buildTable and buildDrillDown)
+  function passesFilters(mi, si, sti, ci, lti, li) {
     const allMdl = !filters.models    || filters.models.size    === 0;
     const allSrc = !filters.sources   || filters.sources.size   === 0;
     const allSt  = !filters.states    || filters.states.size    === 0;
     const allCi  = !filters.cities    || filters.cities.size    === 0;
     const allLt  = !filters.leadTypes || filters.leadTypes.size === 0;
+    if (!allMdl && !filters.models.has(maps.mdl[mi])) return false;
+    if (!allSrc && !filters.sources.has(maps.src[si])) return false;
+    if (!allSt  && !filters.states.has(maps.st[sti])) return false;
+    if (!allCi  && !filters.cities.has(maps.city[ci])) return false;
+    if (!allLt  && !filters.leadTypes.has(maps.lt[lti])) return false;
+    return true;
+  }
+
+  // Build dispersion map for a given set of months, respecting all active filters
+  function buildTable(monthSet) {
     const byModel = new Map();
     for (const row of rdm) {
       const mi=row[0],isSame=row[1],si=row[2],sti=row[3],ci=row[4],lti=row[5],li=row[6];
       const cnt = row[rtCol] || 0;
       if (cnt === 0) continue;
       if (!monthSet.has(maps.lm[li])) continue;
-      if (!allMdl && !filters.models.has(maps.mdl[mi])) continue;
-      if (!allSrc && !filters.sources.has(maps.src[si])) continue;
-      if (!allSt  && !filters.states.has(maps.st[sti])) continue;
-      if (!allCi  && !filters.cities.has(maps.city[ci])) continue;
-      if (!allLt  && !filters.leadTypes.has(maps.lt[lti])) continue;
+      if (!passesFilters(mi,si,sti,ci,lti,li)) continue;
       if (!byModel.has(mi)) byModel.set(mi, { same: 0, cross: 0 });
       const e = byModel.get(mi);
       if (isSame) e.same += cnt; else e.cross += cnt;
@@ -2561,10 +2586,29 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
     return byModel;
   }
 
+  // Build drill-down map for a given set of months: mi → Map(purMI → {cnt, isSame})
+  function buildDrillDown(monthSet) {
+    const byEnqModel = new Map();
+    if (!rdmx) return byEnqModel;
+    for (const row of rdmx) {
+      const mi=row[0],purMI=row[1],isSame=row[2],si=row[3],sti=row[4],ci=row[5],lti=row[6],li=row[7];
+      const cnt = row[rdmxCol] || 0;
+      if (cnt === 0) continue;
+      if (!monthSet.has(maps.lm[li])) continue;
+      if (!passesFilters(mi,si,sti,ci,lti,li)) continue;
+      if (!byEnqModel.has(mi)) byEnqModel.set(mi, new Map());
+      const inner = byEnqModel.get(mi);
+      if (!inner.has(purMI)) inner.set(purMI, { cnt: 0, isSame });
+      inner.get(purMI).cnt += cnt;
+    }
+    return byEnqModel;
+  }
+
   // Render one dispersion card
-  function renderCard(title, byModel, csvName, dispMonth) {
+  function renderCard(title, byModel, drillDown, csvName, dispMonth) {
     if (!byModel || byModel.size === 0) return null;
     const rows = [...byModel.entries()].map(([mi, v]) => ({
+      mi,
       model: maps.mdl[mi],
       same: v.same, cross: v.cross,
       total: v.same + v.cross,
@@ -2603,11 +2647,33 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
             )
           ),
           ce('tbody', null,
-            ...rows.map(r => {
+            ...rows.flatMap(r => {
               const barW = maxDisp > 0 ? Math.min(100, r.disp / maxDisp * 100) : 0;
               const barColor = r.disp < 20 ? '#22C55E' : r.disp < 35 ? '#F59E0B' : r.disp < 50 ? '#F97316' : '#EF4444';
-              return ce('tr', { key: r.model },
-                ce('td', { className:'label' }, r.model),
+              const isExpanded = expandedModels.has(r.mi);
+
+              // Build sorted child rows for this enquired model
+              const childRows = (drillDown && drillDown.has(r.mi))
+                ? [...drillDown.get(r.mi).entries()]
+                    .map(([purMI, v]) => ({ purModel: maps.purMdl[purMI] || '', cnt: v.cnt, isSame: v.isSame }))
+                    .filter(c => c.cnt > 0)
+                    .sort((a, b) => {
+                      if (a.isSame !== b.isSame) return b.isSame - a.isSame; // Same first
+                      return b.cnt - a.cnt; // then by count desc
+                    })
+                : [];
+
+              const parentRow = ce('tr', {
+                key: 'p-' + r.mi,
+                style: { cursor: childRows.length > 0 ? 'pointer' : 'default' },
+                onClick: childRows.length > 0 ? () => toggleExpand(r.mi) : undefined,
+              },
+                ce('td', { className:'label' },
+                  ce('span', { style:{display:'inline-block',width:14,marginRight:4,fontSize:11,color:'#64748B',userSelect:'none'} },
+                    childRows.length > 0 ? (isExpanded ? '▼' : '▶') : ''
+                  ),
+                  r.model
+                ),
                 ce('td', { style:{color:'#16A34A',fontWeight:700} }, Nf(r.same)),
                 ce('td', { style:{color:'#DC2626',fontWeight:700} }, Nf(r.cross)),
                 ce('td', { style:{fontWeight:600} }, Nf(r.total)),
@@ -2622,6 +2688,35 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
                   )
                 )
               );
+
+              if (!isExpanded || childRows.length === 0) return [parentRow];
+
+              const childTrs = childRows.map((c, ci) =>
+                ce('tr', { key: 'c-' + r.mi + '-' + ci, style:{background:'var(--drill-bg,#F8FAFC)'} },
+                  ce('td', { className:'label', style:{paddingLeft:32,fontSize:12,color:'#475569'} },
+                    ce('span', { style:{color:'#94A3B8',marginRight:5} }, '↳'),
+                    c.purModel || '(blank)'
+                  ),
+                  ce('td', { style:{fontSize:12,fontWeight:600,color:'#334155'} }, Nf(c.cnt)),
+                  ce('td', { style:{fontSize:12,fontWeight:700,color: c.isSame ? '#16A34A' : '#DC2626'} },
+                    c.isSame ? 'Same' : 'Cross'
+                  ),
+                  ce('td', { style:{fontSize:12,fontWeight:600,color:'#1E40AF',fontFamily:'DM Mono,monospace'} },
+                    (c.cnt / r.total * 100).toFixed(1) + '%'
+                  ),
+                  ce('td', null)
+                )
+              );
+
+              const subtotalTr = ce('tr', { key: 'st-' + r.mi, style:{background:'var(--drill-sub,#EFF6FF)',borderTop:'1px solid #BFDBFE'} },
+                ce('td', { className:'label', style:{paddingLeft:32,fontSize:12,fontWeight:700,color:'#1E40AF'} }, 'Total'),
+                ce('td', { style:{fontSize:12,fontWeight:700,color:'#1E40AF'} }, Nf(r.total)),
+                ce('td', null),
+                ce('td', { style:{fontSize:12,fontWeight:700,color:'#1E40AF',fontFamily:'DM Mono,monospace'} }, '100.0%'),
+                ce('td', null)
+              );
+
+              return [parentRow, ...childTrs, subtotalTr];
             }),
             ce('tr', { className:'total-row' },
               ce('td', { className:'label', style:{color:'#1A237E'} }, 'Σ Grand Total'),
@@ -2642,8 +2737,10 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
     return new Set(months);
   }, [filters.months, months]);
 
-  const allMonthsMap = useMemo(() => buildTable(activeMonths), [rdm, maps, filters, activeMonths, rtCol]);
-  const monthlyMaps  = useMemo(() => months.map(M => ({ M, byModel: buildTable(new Set([M])) })), [rdm, maps, filters, months, rtCol]);
+  const allMonthsMap      = useMemo(() => buildTable(activeMonths),  [rdm, maps, filters, activeMonths, rtCol]);
+  const monthlyMaps       = useMemo(() => months.map(M => ({ M, byModel: buildTable(new Set([M])) })),  [rdm, maps, filters, months, rtCol]);
+  const allDrillDown      = useMemo(() => buildDrillDown(activeMonths), [rdmx, maps, filters, activeMonths, rdmxCol]);
+  const monthlyDrillDowns = useMemo(() => months.map(M => buildDrillDown(new Set([M]))), [rdmx, maps, filters, months, rdmxCol]);
 
   return ce('div', { className:'fade-up' },
     rdm.length === 0 && ce('div',{className:'card',style:{padding:32,textAlign:'center',color:'#94A3B8'}},
@@ -2651,13 +2748,15 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
     renderCard(
       'Σ All Months — Retail Dispersion Summary',
       allMonthsMap,
+      allDrillDown,
       'Hero_Retail_Dispersion_AllMonths.csv',
       null
     ),
-    monthlyMaps.map(({ M, byModel }) =>
+    monthlyMaps.map(({ M, byModel }, idx) =>
       renderCard(
         'Retail Dispersion — ' + M,
         byModel,
+        monthlyDrillDowns[idx],
         'Hero_Retail_Dispersion_' + M.replace(/[^a-z0-9]/gi, '_') + '.csv',
         M
       )
