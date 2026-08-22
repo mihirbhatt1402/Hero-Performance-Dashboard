@@ -473,6 +473,16 @@ function parseHeroLeadRows(raw){
     const state=get(r,['state','lead state']);
     const dup=get(r,['duplicate check','duplicity check','duplicate','is duplicate','isdup','is_duplicate']);
     const isUnique=dup?dup.toLowerCase()==='unique':true;
+    // Extra fields for Detailed CSV
+    const encryptMobile=get(r,['encrypt mobile number','encrypt_mobile_number','encrypted mobile','mobile number (encrypted)','encryptmobile','mobile']);
+    const idVerifiedLead=get(r,['id_verified_lead','id verified lead','id verified','idverifiedlead','id_verified']);
+    const brand=get(r,['brand','oem','manufacturer','make']);
+    const verifiedDealer=get(r,['verified_dealer','verified dealer','verifieddealer','dealer']);
+    const dealerId=get(r,['dealer_id','dealerid','dealer id']);
+    const oemCrmId=get(r,['oem_crm_id','oemcrmid','oem crm id','crm id','crm_id','oem crm']);
+    const dealerName=get(r,['dealer_name','dealername','dealer name','dealership name','dealership']);
+    const enquiryId=get(r,['enquiry_id','enquiryid','enquiry id','inquiry id','inquiry_id','enquiryid']);
+    const utmCampaign=utmRawKey?String(r[utmRawKey]||'').trim():'';
     if(leadDate){
       if(!earliestDate||leadDate<earliestDate)earliestDate=leadDate;
       if(!latestDate||leadDate>latestDate)latestDate=leadDate;
@@ -480,7 +490,8 @@ function parseHeroLeadRows(raw){
     rows.push({
       opty_id,lt:lt||'Unknown',source:source||'Unknown',
       model:canonicalModel(model)||'Unknown',city:city||'Unknown',state:canonicalState(state)||'Unknown',
-      lead_month,leadDate:leadDate||null,isUnique
+      lead_month,leadDate:leadDate||null,isUnique,
+      encryptMobile,idVerifiedLead,brand,verifiedDealer,dealerId,oemCrmId,dealerName,enquiryId,utmCampaign
     });
   }
   const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
@@ -613,7 +624,10 @@ function joinHeroData(leadResult,retailResult){
     const purchasedModel=isBooked?(sorted[0].purchasedModel||''):'';
     return{opty_id:lr.opty_id,lt:lr.lt,source:lr.source,model:lr.model,city:lr.city,state:lr.state,
       lead_month:lr.lead_month,booking_month,isUnique:lr.isUnique,isBooked,callType,
-      leadDate:lr.leadDate||null,retailDate,purchasedModel};
+      leadDate:lr.leadDate||null,retailDate,purchasedModel,
+      encryptMobile:lr.encryptMobile||'',idVerifiedLead:lr.idVerifiedLead||'',brand:lr.brand||'',
+      verifiedDealer:lr.verifiedDealer||'',dealerId:lr.dealerId||'',oemCrmId:lr.oemCrmId||'',
+      dealerName:lr.dealerName||'',enquiryId:lr.enquiryId||'',utmCampaign:lr.utmCampaign||''};
   });
   return{rows:joined,diagnostics:{
     leadTotalRows:leadDiag.totalRows,leadIncluded:leadDiag.included,leadUniqueIds:leadDiag.uniqueIds,leadDupIds:leadDiag.dupIds,
@@ -776,9 +790,6 @@ function buildPayload(joinedRows){
   const f3=m=>[...m.entries()].map(([k,v])=>{const[a,b,c]=k.split('|');return[+a,+b,+c,v[0],v[1],v[2],v[3]];});
   const f5=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e]=k.split('|');return[+a,+b,+c,+d,+e,v[0],v[1],v[2],v[3]];});
   const f7=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e,f,g]=k.split('|');return[+a,+b,+c,+d,+e,+f,+g,v[0],v[1],v[2],v[3]];});
-  // QA: Retail Dispersion summary
-  {const rdmRows=f7(rdmA);let same=0,cross=0;for(const row of rdmRows){if(row[1]===1)same+=row[7];else cross+=row[7];}
-   const total=same+cross;console.log('[Hero RDM QA] rdm rows:',rdmRows.length,'| SAME:',same,'| CROSS:',cross,'| TOTAL:',total,'| DISP%:',total>0?(cross/total*100).toFixed(1)+'%':'N/A','| Models:',new Set(rdmRows.map(r=>r[0])).size);}
   return{
     t:now,
     maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state},
@@ -1058,6 +1069,79 @@ function CsvBtn({onClick}) {
   }, '\u2193 CSV');
 }
 
+function DetailedCsvBtn({onClick}) {
+  return ce('button', {
+    onClick, title:'Export detailed CSV \u2014 one row per lead',
+    style:{padding:'5px 10px',fontSize:10,fontWeight:700,border:'1px solid #BFDBFE',borderRadius:6,background:'#EFF6FF',color:'#1E40AF',cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit',marginLeft:6}
+  }, '\u2193 Detailed CSV');
+}
+
+function isRetailedLead(r) {
+  if (!r.isBooked || !r.booking_month || !r.lead_month) return false;
+  const d = heroMonthOrder(r.booking_month) - heroMonthOrder(r.lead_month);
+  return d >= 0 && d <= 2;
+}
+
+function exportDetailedCsv(rawJoined, filters, RT, leadsMode, filename, monthOverride) {
+  if (!rawJoined || !rawJoined.length) return;
+  const { months:mf, sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf } = filters;
+  const allM   = !mf  || mf.size  === 0;
+  const allS   = !sf  || sf.size  === 0;
+  const allLT  = !ltf || ltf.size === 0;
+  const allMdl = !mdf || mdf.size === 0;
+  const allSt  = !stf || stf.size === 0;
+  const allCity= !cf  || cf.size  === 0;
+  const fmtD   = d => (d instanceof Date && !isNaN(d.getTime())) ? formatRetailDate(d) : '';
+  const hdr = ['encrypt_mobile_number','id_verified_lead','opty_id','Date','Lead_Month',
+    'brand','model','verified_dealer','dealerId','oem_crm_id','City','State',
+    'Dealer_Name','enquiryId','utm_campaign','lead_type','Medium','Status_Name',
+    'purchasedModel','performanceMonth','Call Type','Retail_Attribution_Date'];
+  const aoa = [hdr];
+  for (const r of rawJoined) {
+    const effMonth = (leadsMode === 'update' && r.isBooked && r.booking_month) ? r.booking_month : r.lead_month;
+    if (monthOverride) {
+      if (effMonth !== monthOverride) continue;
+    } else if (!allM) {
+      if (mf === FILTER_CLEARED) continue;
+      if (!mf.has(effMonth)) continue;
+    }
+    if (!allS) {
+      if (sf === FILTER_CLEARED) continue;
+      if (!sf.has(r.source)) continue;
+    }
+    if (!allLT) {
+      if (ltf === FILTER_CLEARED) continue;
+      if (!ltf.has(r.lt)) continue;
+    }
+    if (!allMdl) {
+      if (mdf === FILTER_CLEARED) continue;
+      if (!mdf.has(r.model)) continue;
+    }
+    if (!allSt) {
+      if (stf === FILTER_CLEARED) continue;
+      if (!stf.has(r.state)) continue;
+    }
+    if (!allCity) {
+      if (cf === FILTER_CLEARED) continue;
+      if (!cf.has(r.city)) continue;
+    }
+    const isRA = isRetailedLead(r) && (RT === 'all' || r.callType === RT);
+    aoa.push([
+      r.encryptMobile||'', r.idVerifiedLead||'', r.opty_id,
+      fmtD(r.leadDate), r.lead_month, r.brand||'', r.model,
+      r.verifiedDealer||'', r.dealerId||'', r.oemCrmId||'',
+      r.city, r.state, r.dealerName||'', r.enquiryId||'', r.utmCampaign||'',
+      r.lt, r.source,
+      isRA ? 'Retail Attribution' : '',
+      isRA ? (r.purchasedModel||'') : '',
+      isRA ? (r.booking_month||'') : '',
+      isRA ? (r.callType||'') : '',
+      isRA ? fmtD(r.retailDate) : '',
+    ]);
+  }
+  exportCsv(aoa, filename);
+}
+
 function makeAggCsv(agg, dimLabel, filename) {
   if (!agg) return;
   const srcKeys = Object.keys(agg.grandSrc || {});
@@ -1302,7 +1386,7 @@ const DimGrid = React.memo(function DimGrid({
    MONTHLY GRIDS WRAPPER
    Renders one DimGrid per selected month.
    ════════════════════════════════════════════════════════════════════ */
-function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, noPrefix, viewerMode, noGroupHeaders }) {
+function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, noPrefix, viewerMode, noGroupHeaders, onDetailedCsv }) {
   const aggs = useMemo(() => months.map(M => ({ M, agg: renderAgg(M) })), [months, renderAgg]);
   const summaryAgg = useMemo(() => {
     let gL=0, gR=0;
@@ -1337,7 +1421,10 @@ function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedG
     summaryAgg && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Summary'),
-        ce(CsvBtn, { onClick:()=>makeAggCsv(summaryAgg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_AllMonths.csv') })
+        ce('div',{style:{display:'flex',gap:0}},
+          ce(CsvBtn, { onClick:()=>makeAggCsv(summaryAgg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_AllMonths.csv') }),
+          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), null) })
+        )
       ),
       ce(DimGrid, { agg:summaryAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
     ),
@@ -1346,7 +1433,10 @@ function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedG
       return ce('div', { key: M, className:'card', style:{ padding:'16px 18px', marginBottom:14 } },
         ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
           ce('div', { className:'section-title', style:{marginBottom:0} }, noPrefix ? M : (title || dimLabel) + ' — ' + M),
-          ce(CsvBtn, { onClick:()=>makeAggCsv(agg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv') })
+          ce('div',{style:{display:'flex',gap:0}},
+            ce(CsvBtn, { onClick:()=>makeAggCsv(agg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv') }),
+            onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), M) })
+          )
         ),
         ce(DimGrid, { agg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
       );
@@ -1684,7 +1774,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
 /* ════════════════════════════════════════════════════════════════════
    SOURCE ANALYSIS TAB
    ════════════════════════════════════════════════════════════════════ */
-const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
+const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onDetailedCsv }) {
   const { maps, sm, univ: univRaw, csm: csmRaw } = data;
   const univ = univRaw || [];
   const csm  = csmRaw  || [];
@@ -1735,12 +1825,15 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
     return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, M),
-        ce(CsvBtn, { onClick:()=>{
-          const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
-          csvSorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-          aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
-          exportCsv(aoa,'Hero_Source_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
-        }})
+        ce('div',{style:{display:'flex',gap:0}},
+          ce(CsvBtn, { onClick:()=>{
+            const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
+            csvSorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+            aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
+            exportCsv(aoa,'Hero_Source_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
+          }}),
+          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', M) })
+        )
       ),
       ce('div', { className:'scroll-x' },
         ce('table', null,
@@ -1822,12 +1915,15 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Source Summary'),
-        ce(CsvBtn, { onClick:()=>{
-          const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
-          crossMonthTotals.sorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-          aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
-          exportCsv(aoa,'Hero_Source_AllMonths.csv');
-        }})
+        ce('div',{style:{display:'flex',gap:0}},
+          ce(CsvBtn, { onClick:()=>{
+            const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
+            crossMonthTotals.sorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
+            exportCsv(aoa,'Hero_Source_AllMonths.csv');
+          }}),
+          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', null) })
+        )
       ),
       ce('div', { className:'scroll-x' },
         ce('table', null,
@@ -1868,7 +1964,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT }) {
 /* ════════════════════════════════════════════════════════════════════
    LT × SOURCE TAB
    ════════════════════════════════════════════════════════════════════ */
-const LTSourceTab = React.memo(function LTSourceTab({ data, filters, months, RT }) {
+const LTSourceTab = React.memo(function LTSourceTab({ data, filters, months, RT, onDetailedCsv }) {
   const { maps, ltm, univ: univRaw } = data;
   const univ = univRaw || [];
   const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
@@ -1902,14 +1998,14 @@ const LTSourceTab = React.memo(function LTSourceTab({ data, filters, months, RT 
 
   return ce('div', { className:'fade-up' },
     ce(MonthlyGrids, { title:'Lead Type × Source', months, renderAgg, srcGroups, dimLabel:'Lead Type',
-      expandedGrps, onToggleGrp })
+      expandedGrps, onToggleGrp, onDetailedCsv })
   );
 });
 
 /* ════════════════════════════════════════════════════════════════════
    MODEL × SOURCE TAB
    ════════════════════════════════════════════════════════════════════ */
-const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, months, RT, viewerMode }) {
+const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv }) {
   const { maps, mm, univ: univRaw } = data;
   const univ = univRaw || [];
   const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
@@ -1941,13 +2037,13 @@ const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, month
     );
   }, [mm, univ, maps, filters, getLR]);
 
-  return ce(MonthlyGrids, { title:'Model × Source', months, renderAgg, srcGroups, dimLabel:'Model', expandedGrps, onToggleGrp, viewerMode });
+  return ce(MonthlyGrids, { title:'Model × Source', months, renderAgg, srcGroups, dimLabel:'Model', expandedGrps, onToggleGrp, viewerMode, onDetailedCsv });
 });
 
 /* ════════════════════════════════════════════════════════════════════
    STATE × SOURCE TAB  (Zone → State → City → Dealer drill-down)
    ════════════════════════════════════════════════════════════════════ */
-const StateSourceTab = React.memo(function StateSourceTab({ data, filters, months, RT, viewerMode }) {
+const StateSourceTab = React.memo(function StateSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv }) {
   const { maps, stm, univ: univRaw } = data;
   const univ = univRaw || [];
   const cm        = data.cm   || [];
@@ -2370,7 +2466,10 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
         ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
           ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — State Summary'),
-          ce(CsvBtn, { onClick:()=>exportStateSourceCsv(stateSummaryAgg,'Hero_StateSource_AllMonths.csv') })
+          ce('div',{style:{display:'flex',gap:0}},
+            ce(CsvBtn, { onClick:()=>exportStateSourceCsv(stateSummaryAgg,'Hero_StateSource_AllMonths.csv') }),
+            onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('StateSource', null) })
+          )
         ),
         ce(DimGrid, { agg:stateSummaryAgg, srcGroups, dimLabel:'State', expandedGrps, onToggleGrp, viewerMode })
       ),
@@ -2380,20 +2479,23 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
         ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
           ce('div', { className:'section-title', style:{marginBottom:0} }, 'State × Source — ' + M),
-          ce(CsvBtn, { onClick:()=>{
-            const aoa=[['Zone','State','Leads','Retail','L2R%']];
-            const ZONE_ORDER=['North','West','South','East','Central','Northeast','Other'];
-            for(const zone of ZONE_ORDER){
-              const zd=grid.zoneData?.get(zone); if(!zd||!zd.total[0])continue;
-              for(const st of(zd.states||[]).sort()){
-                const sd=grid.stateData?.get(st); if(!sd)continue;
-                const l=sd.total[0],r=sd.total[1];
-                aoa.push([zone,st,l,r,l>0?+(r/l*100).toFixed(1):0]);
+          ce('div',{style:{display:'flex',gap:0}},
+            ce(CsvBtn, { onClick:()=>{
+              const aoa=[['Zone','State','Leads','Retail','L2R%']];
+              const ZONE_ORDER=['North','West','South','East','Central','Northeast','Other'];
+              for(const zone of ZONE_ORDER){
+                const zd=grid.zoneData?.get(zone); if(!zd||!zd.total[0])continue;
+                for(const st of(zd.states||[]).sort()){
+                  const sd=grid.stateData?.get(st); if(!sd)continue;
+                  const l=sd.total[0],r=sd.total[1];
+                  aoa.push([zone,st,l,r,l>0?+(r/l*100).toFixed(1):0]);
+                }
               }
-            }
-            aoa.push(['','Grand Total',grid.grand.l,grid.grand.r,grid.grand.l>0?+(grid.grand.r/grid.grand.l*100).toFixed(1):0]);
-            exportCsv(aoa,`Hero_StateSource_${M.replace(/[^a-z0-9]/gi,'_')}.csv`);
-          }})
+              aoa.push(['','Grand Total',grid.grand.l,grid.grand.r,grid.grand.l>0?+(grid.grand.r/grid.grand.l*100).toFixed(1):0]);
+              exportCsv(aoa,`Hero_StateSource_${M.replace(/[^a-z0-9]/gi,'_')}.csv`);
+            }}),
+            onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('StateSource', M) })
+          )
         ),
         ce('div', { className:'scroll-x' },
           ce('table', null,
@@ -2414,7 +2516,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
    Enquired Model vs Purchased Model: SAME / CROSS / TOTAL / DISPERSION%
    rdm row format: [mi, is_same, si, sti, ci, lti, lm_idx, cnt_all, cnt_dms, cnt_co, _]
    ════════════════════════════════════════════════════════════════════ */
-const DispersionTab = React.memo(function DispersionTab({ data, filters, months, RT }) {
+const DispersionTab = React.memo(function DispersionTab({ data, filters, months, RT, onDetailedCsv }) {
   const { maps, rdm } = data;
   if (!rdm) return ce('div',{className:'fade-up'},ce('div',{className:'card',style:{padding:32,textAlign:'center',color:'#94A3B8'}},'Retail Dispersion data not yet available. Please sync data.'));
 
@@ -2447,7 +2549,7 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
   }
 
   // Render one dispersion card
-  function renderCard(title, byModel, csvName) {
+  function renderCard(title, byModel, csvName, dispMonth) {
     if (!byModel || byModel.size === 0) return null;
     const rows = [...byModel.entries()].map(([mi, v]) => ({
       model: maps.mdl[mi],
@@ -2466,12 +2568,15 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
     return ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, title),
-        ce(CsvBtn, { onClick:() => {
-          const aoa = [['Enquired Model','Same','Cross','Total','Dispersion%']];
-          rows.forEach(r => aoa.push([r.model, r.same, r.cross, r.total, +r.disp.toFixed(2)]));
-          aoa.push(['Σ Grand Total', grandSame, grandCross, grandTotal, +grandDisp.toFixed(2)]);
-          exportCsv(aoa, csvName);
-        }})
+        ce('div',{style:{display:'flex',gap:0}},
+          ce(CsvBtn, { onClick:() => {
+            const aoa = [['Enquired Model','Same','Cross','Total','Dispersion%']];
+            rows.forEach(r => aoa.push([r.model, r.same, r.cross, r.total, +r.disp.toFixed(2)]));
+            aoa.push(['Σ Grand Total', grandSame, grandCross, grandTotal, +grandDisp.toFixed(2)]);
+            exportCsv(aoa, csvName);
+          }}),
+          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Dispersion', dispMonth||null) })
+        )
       ),
       ce('div', { className:'scroll-x' },
         ce('table', null,
@@ -2533,13 +2638,15 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
     renderCard(
       'Σ All Months — Retail Dispersion Summary',
       allMonthsMap,
-      'Hero_Retail_Dispersion_AllMonths.csv'
+      'Hero_Retail_Dispersion_AllMonths.csv',
+      null
     ),
     monthlyMaps.map(({ M, byModel }) =>
       renderCard(
         'Retail Dispersion — ' + M,
         byModel,
-        'Hero_Retail_Dispersion_' + M.replace(/[^a-z0-9]/gi, '_') + '.csv'
+        'Hero_Retail_Dispersion_' + M.replace(/[^a-z0-9]/gi, '_') + '.csv',
+        M
       )
     )
   );
@@ -2638,7 +2745,7 @@ function buildCrossAgg(table, maps, rowMapKey, colMapKey, lmMapKey, rowPos, colP
 }
 
 // CrossTabGrid: renders a state/city × model cross-tabulation
-const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel, rtCols, onExport, onCsvExport, title }) {
+const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel, rtCols, onExport, onCsvExport, onDetailedCsvExport, title }) {
   if (!agg || agg.grand.l===0) return null;
   const {grand,colKeys,rowKeys,rowAggs}=agg;
   const showRT=!!rtCols;
@@ -2650,6 +2757,7 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
       ce('div',{className:'section-title',style:{marginBottom:0}},title),
       ce('div',{style:{display:'flex',gap:4}},
         onCsvExport && ce(CsvBtn,{onClick:onCsvExport}),
+        onDetailedCsvExport && ce(DetailedCsvBtn,{onClick:onDetailedCsvExport}),
         onExport && ce(ExportBtn,{onClick:onExport})
       )
     ),
@@ -2730,7 +2838,7 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
 /* ════════════════════════════════════════════════════════════════════
    CITY × SOURCE TAB
    ════════════════════════════════════════════════════════════════════ */
-const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months, RT, viewerMode }) {
+const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv }) {
   const { maps } = data;
   const csm = data.csm || [];
   const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
@@ -2805,6 +2913,7 @@ const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months,
         ce('div', { className:'section-title', style:{marginBottom:0} }, 'City × Source'),
         ce('div', {style:{display:'flex',gap:4}},
           ce(CsvBtn, { onClick:()=>makeAggCsv(summaryAgg,'City','Hero_CitySource_AllMonths.csv') }),
+          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('CitySource', null) }),
           ce(ExportBtn, { onClick: exportAll })
         )
       ),
@@ -2816,7 +2925,7 @@ const CitySourceTab = React.memo(function CitySourceTab({ data, filters, months,
 /* ════════════════════════════════════════════════════════════════════
    STATE × MODEL TAB
    ════════════════════════════════════════════════════════════════════ */
-const StateModelTab = React.memo(function StateModelTab({ data, filters, months, RT, viewerMode }) {
+const StateModelTab = React.memo(function StateModelTab({ data, filters, months, RT, viewerMode, onDetailedCsv }) {
   const { maps } = data;
   const mxst = data.mxst || [];
   const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
@@ -2866,6 +2975,7 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
           const gt=['Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];colKeys.forEach(ck=>{let tL=0,tR=0;rowKeys.forEach(rk=>{const ca=(rowAggs[rk].colAggs[ck]||{l:0,r:0});tL+=ca.l;tR+=ca.r;});gt.push(tL,tR,tL>0?+(tR/tL*100).toFixed(1):0);});aoa.push(gt);
           exportCsv(aoa,'Hero_StateModel_AllMonths.csv');
         },
+        onDetailedCsvExport: onDetailedCsv ? ()=>onDetailedCsv('StateModel', null) : null,
         onExport:()=>exportAgg(summaryAgg,'Summary') })
     ),
     monthlyAggs.map(({M,agg}) => agg ?
@@ -2878,7 +2988,8 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
             rowKeys.forEach(rk=>{const da=rowAggs[rk];const r=[rk,da.total.l,da.total.r,grand.l>0?+(da.total.l/grand.l*100).toFixed(1):0,+da.total.l2r.toFixed(1)];colKeys.forEach(ck=>{const ca=da.colAggs[ck]||{l:0,r:0,l2r:0};r.push(ca.l,ca.r,+ca.l2r.toFixed(1));});aoa.push(r);});
             const gt=['Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];colKeys.forEach(ck=>{let tL=0,tR=0;rowKeys.forEach(rk=>{const ca=(rowAggs[rk].colAggs[ck]||{l:0,r:0});tL+=ca.l;tR+=ca.r;});gt.push(tL,tR,tL>0?+(tR/tL*100).toFixed(1):0);});aoa.push(gt);
             exportCsv(aoa,`Hero_StateModel_${M.replace(/[^a-z0-9]/gi,'_')}.csv`);
-          }
+          },
+          onDetailedCsvExport: onDetailedCsv ? ()=>onDetailedCsv('StateModel', M) : null,
         })
       ) : null
     )
@@ -2888,7 +2999,7 @@ const StateModelTab = React.memo(function StateModelTab({ data, filters, months,
 /* ════════════════════════════════════════════════════════════════════
    CITY × MODEL TAB
    ════════════════════════════════════════════════════════════════════ */
-const CityModelTab = React.memo(function CityModelTab({ data, filters, months, RT, viewerMode }) {
+const CityModelTab = React.memo(function CityModelTab({ data, filters, months, RT, viewerMode, onDetailedCsv }) {
   const { maps } = data;
   const cxm = data.cxm || [];
   const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
@@ -2955,6 +3066,7 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
           const gt=['Grand Total',grand.l,grand.r,100,+grand.l2r.toFixed(1)];colKeys.forEach(ck=>{let tL=0,tR=0;rowKeys.forEach(rk=>{const ca=(rowAggs[rk].colAggs[ck]||{l:0,r:0});tL+=ca.l;tR+=ca.r;});gt.push(tL,tR,tL>0?+(tR/tL*100).toFixed(1):0);});aoa.push(gt);
           exportCsv(aoa,'Hero_CityModel_AllMonths.csv');
         },
+        onDetailedCsvExport: onDetailedCsv ? ()=>onDetailedCsv('CityModel', null) : null,
         onExport: exportSummary })
     )
   );
@@ -2966,7 +3078,7 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
 const thS = {padding:'7px 10px', textAlign:'right', fontWeight:700, fontSize:10, color:'#7C2D12', background:'#FFF7ED', borderBottom:'2px solid #FDBA74', whiteSpace:'nowrap'};
 const tdS = {padding:'7px 10px', textAlign:'right', fontSize:11, fontFamily:'DM Mono,monospace'};
 
-const PivotTab = React.memo(function PivotTab({ data, filters, months, RT }) {
+const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDetailedCsv }) {
   const { maps } = data;
   const COL_SEP = '\x00';
 
@@ -3483,7 +3595,8 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT }) {
       ),
 
       !unsupported && !noData && !awaitingPipeline &&
-        ce('div', { style:{marginLeft:'auto',alignSelf:'flex-end',paddingTop:20} },
+        ce('div', { style:{marginLeft:'auto',alignSelf:'flex-end',paddingTop:20,display:'flex',gap:6} },
+          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Pivot', null) }),
           ce('button', { onClick: handleExport,
             style:{ padding:'7px 16px', fontSize:12, fontWeight:700, border:'none',
                     borderRadius:8, background:'#EA580C', color:'#fff', cursor:'pointer' }
@@ -3759,6 +3872,7 @@ const TABS = [
 function App({fbUser,role,presence,onSignOut,onAdminOpen}){
   const viewerMode=role==='viewer';
   const [data,setData]=useState(null);
+  const [rawJoined,setRawJoined]=useState(null);
   const [syncing,setSyncing]=useState(false);
   const [syncErr,setSyncErr]=useState(null);
   const [lastSynced,setLastSynced]=useState(null);
@@ -3784,6 +3898,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       const{rows:joined,diagnostics:diag}=joinHeroData(leadResult,retailResult);
       if(!joined.length)throw new Error('No rows after join. Check opty_id / sourceLeadId column names.');
       const payload=buildPayload(joined);
+      setRawJoined(joined);
       // Attach column/sample info to diagnostics for in-page display
       const rd2=retailResult.diagnostics;
       diag.leadCols=leadResult.diagnostics.allLeadCols||[];
@@ -3894,9 +4009,14 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     ?TABS.filter(t=>['modelxsrc','statexsrc','cityxsrc','statexmodel','cityxmodel'].includes(t.id))
     :TABS;
 
+  const onDetailedCsv=useCallback((tabName,month)=>{
+    const suffix=month?month.replace(/[^a-z0-9]/gi,'_'):'AllMonths';
+    exportDetailedCsv(rawJoined,filters,RT,leadsMode,'Hero_'+tabName+'_Detailed_'+suffix+'.csv',month||null);
+  },[rawJoined,filters,RT,leadsMode]);
+
   const tabContent=useMemo(()=>{
     if(!effectiveData)return null;
-    const props={data:effectiveData,filters,months,RT,viewerMode};
+    const props={data:effectiveData,filters,months,RT,viewerMode,onDetailedCsv};
     switch(tab){
       case 'overview':    return ce(OverviewTab,   props);
       case 'source':      return ce(SourceTab,      props);
@@ -3910,7 +4030,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       case 'pivot':       return ce(PivotTab,       props);
       default: return null;
     }
-  },[tab,effectiveData,filters,months,RT,viewerMode]);
+  },[tab,effectiveData,filters,months,RT,viewerMode,onDetailedCsv]);
 
   if(!effectiveData)return ce(HeroSyncScreen,{onSync:handleSync,syncing,syncErr});
 
