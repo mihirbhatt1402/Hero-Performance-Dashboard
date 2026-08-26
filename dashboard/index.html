@@ -27,7 +27,8 @@
   --org-clr:#059669;--org-light:#D1FAE5;
   --dur-fast:120ms;--dur-base:200ms;
   --shadow-1:0 2px 8px rgba(0,0,0,.08),0 0 0 1px rgba(234,88,12,.10);
-  --shadow-card:0 4px 16px rgba(0,0,0,.07),0 1px 3px rgba(0,0,0,.05)
+  --shadow-card:0 4px 16px rgba(0,0,0,.07),0 1px 3px rgba(0,0,0,.05);
+  --dashboard-font-scale:1
 }
 body{font-family:'Inter',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh}
 .fade-up{animation:fadeUp .25s ease both}
@@ -172,6 +173,47 @@ tr.dealer-row:hover td{background:#FEF3C7}
 .admin-panel-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
 .admin-card{background:#fff;border-radius:16px;padding:28px 32px;max-width:680px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2);max-height:80vh;overflow-y:auto}
 .viewer-badge{background:#DBEAFE;color:#1D4ED8;font-size:9px;font-weight:700;padding:2px 9px;border-radius:20px;letter-spacing:.06em;text-transform:uppercase}
+
+/* ── Font-scale: all base font-sizes respond to --dashboard-font-scale ── */
+.kpi-label{font-size:calc(9px * var(--dashboard-font-scale))}
+.kpi-value{font-size:calc(24px * var(--dashboard-font-scale))}
+.kpi-value.kpi-long{font-size:calc(16px * var(--dashboard-font-scale))}
+.kpi-value.kpi-med{font-size:calc(20px * var(--dashboard-font-scale))}
+.kpi-sub{font-size:calc(10px * var(--dashboard-font-scale))}
+.tab-pill{font-size:calc(12px * var(--dashboard-font-scale))}
+table{font-size:calc(11.5px * var(--dashboard-font-scale))}
+th{font-size:calc(9.5px * var(--dashboard-font-scale))}
+th.sub{font-size:calc(8.5px * var(--dashboard-font-scale))}
+td{font-size:calc(11.5px * var(--dashboard-font-scale))}
+td.label{font-size:calc(12px * var(--dashboard-font-scale))}
+td.sub-label{font-size:calc(11px * var(--dashboard-font-scale))}
+.badge{font-size:calc(10px * var(--dashboard-font-scale))}
+.badge-gray{font-size:calc(10px * var(--dashboard-font-scale))}
+.filter-bar label{font-size:calc(9px * var(--dashboard-font-scale))}
+.ms-btn{font-size:calc(11px * var(--dashboard-font-scale))}
+.ms-btn .ms-count{font-size:calc(9px * var(--dashboard-font-scale))}
+.ms-option{font-size:calc(11px * var(--dashboard-font-scale))}
+.btn{font-size:calc(12px * var(--dashboard-font-scale))}
+.btn-ghost{font-size:calc(11px * var(--dashboard-font-scale))}
+.section-title{font-size:calc(11px * var(--dashboard-font-scale))}
+.err-box{font-size:calc(11px * var(--dashboard-font-scale))}
+/* Header text helpers */
+.hdr-title{font-size:calc(13px * var(--dashboard-font-scale));font-weight:800;color:#fff;letter-spacing:-.02em}
+.hdr-sub{font-size:calc(9px * var(--dashboard-font-scale));color:#FED7AA;letter-spacing:.07em;font-weight:600}
+.hdr-kpi-lbl{font-size:calc(8px * var(--dashboard-font-scale));font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#FED7AA}
+.hdr-kpi-val{font-size:calc(13px * var(--dashboard-font-scale));font-weight:800;color:#fff;font-family:'DM Mono',monospace;letter-spacing:-.02em}
+/* SummaryBar helpers */
+.sum-label{font-size:calc(9px * var(--dashboard-font-scale));font-weight:800;color:#003087;text-transform:uppercase;letter-spacing:.1em;padding-right:12px;margin-right:4px;border-right:1px solid #BFDBFE;white-space:nowrap;min-width:52px;align-self:center}
+.sum-kpi-lbl{font-size:calc(9px * var(--dashboard-font-scale));color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;white-space:nowrap}
+.sum-kpi-val{font-size:calc(14px * var(--dashboard-font-scale));font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap}
+/* Diagnostics bar */
+.diag-bar{background:#F0F9FF;border-bottom:1px solid #BAE6FD;padding:5px 24px;font-size:calc(10px * var(--dashboard-font-scale));font-family:'DM Mono',monospace;color:#0C4A6E}
+/* Font-size control buttons */
+.fs-ctrl{display:flex;align-items:center;gap:3px;flex-shrink:0}
+.fs-btn{padding:3px 8px;font-size:11px;font-weight:700;font-family:inherit;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:6px;cursor:pointer;transition:background var(--dur-fast);line-height:1.4}
+.fs-btn:hover:not(:disabled){background:rgba(255,255,255,.25)}
+.fs-btn:disabled{opacity:.35;cursor:default}
+.fs-btn:focus-visible{outline:2px solid #fff;outline-offset:1px}
 </style>
 </head>
 <body>
@@ -664,8 +706,7 @@ function HeroDiagnostics({d}){
     {l:'Latest DMS Retail',v:fmtD(d.retailLatestDmsDate)},
     {l:'Latest Call Out Retail',v:fmtD(d.retailLatestCoDate)},
   ];
-  const sty={background:'#F0F9FF',borderBottom:'1px solid #BAE6FD',padding:'5px 24px',fontSize:10,fontFamily:'DM Mono,monospace',color:'#0C4A6E'};
-  return ce('div',{style:sty},
+  return ce('div',{className:'diag-bar'},
     ce('span',{style:{fontWeight:700,marginRight:12}},'Data Status:'),
     items.map((it,i)=>ce('span',{key:i,style:{marginRight:20}},it.l+': ',ce('strong',null,it.v)))
   );
@@ -990,19 +1031,14 @@ function SummaryBar({ kpis }) {
             borderRadius:8, padding:'7px 14px', marginBottom:14,
             boxShadow:'0 1px 3px rgba(0,48,135,0.07)' }
   },
-    ce('span', { style:{ fontSize:9, fontWeight:800, color:'#003087', textTransform:'uppercase',
-                         letterSpacing:'.1em', paddingRight:12, marginRight:4, alignSelf:'center',
-                         borderRight:'1px solid #BFDBFE', whiteSpace:'nowrap', minWidth:52 } },
-      'Summary'),
+    ce('span', { className:'sum-label' }, 'Summary'),
     kpis.map((k, i) => ce('div', {
       key: i,
       style:{ display:'flex', flexDirection:'column', padding:'2px 12px',
               borderLeft: i > 0 ? '1px solid #F1F5F9' : 'none' }
     },
-      ce('span', { style:{ fontSize:9, color:'#64748B', fontWeight:600, textTransform:'uppercase',
-                           letterSpacing:'.06em', marginBottom:2, whiteSpace:'nowrap' } }, k.label),
-      ce('span', { style:{ fontSize:14, fontWeight:700, color:k.accent||'#0f172a',
-                           fontFamily:'DM Mono, monospace', whiteSpace:'nowrap' } }, k.value)
+      ce('span', { className:'sum-kpi-lbl' }, k.label),
+      ce('span', { className:'sum-kpi-val', style:{color:k.accent||'#0f172a'} }, k.value)
     ))
   );
 }
@@ -1675,7 +1711,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
       KPIs.map((k,i) => ce('div', { key:i, className:'kpi' },
         ce('div', { style:{position:'absolute',top:0,left:0,right:0,height:3,background:k.color,borderRadius:'12px 12px 0 0'} }),
         ce('div', { className:'kpi-label' }, k.label),
-        ce('div', { className:'kpi-value', style:{fontSize:k.value.length>7?16:20,color:k.color} }, k.value),
+        ce('div', { className:'kpi-value'+(k.value.length>7?' kpi-long':' kpi-med'), style:{color:k.color} }, k.value),
         ce('div', { className:'kpi-sub', style:{color:k.color} }, k.sub)
       ))
     ),
@@ -3968,6 +4004,8 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
 /* ════════════════════════════════════════════════════════════════════
    APP ROOT — Hero MotoCorp LDR (TVS tab components, Hero data)
    ════════════════════════════════════════════════════════════════════ */
+const FONT_STEPS=[0.85,0.90,0.95,1.00,1.05,1.10,1.15,1.20,1.25];
+const FONT_MIN=FONT_STEPS[0],FONT_MAX=FONT_STEPS[FONT_STEPS.length-1];
 const TABS = [
   { id:'overview',    label:'Overview' },
   { id:'source',      label:'Source Analysis' },
@@ -3994,6 +4032,10 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
   const [RT,setRT]=useState('all');
   const [filters,setFilters]=useState({months:new Set(),leadTypes:new Set(),sources:new Set(),models:new Set(),states:new Set(),cities:new Set()});
   const [isPending,startT]=useTransition();
+  const [fontScale,setFontScale]=useState(1.00);
+  useEffect(()=>{document.documentElement.style.setProperty('--dashboard-font-scale',fontScale);},[fontScale]);
+  const decFont=useCallback(()=>setFontScale(s=>{const i=FONT_STEPS.indexOf(+s.toFixed(2));return i>0?FONT_STEPS[i-1]:s;}),[]);
+  const incFont=useCallback(()=>setFontScale(s=>{const i=FONT_STEPS.indexOf(+s.toFixed(2));return i<FONT_STEPS.length-1?FONT_STEPS[i+1]:s;}),[]);
 
   const handleSync=useCallback(async()=>{
     setSyncing(true);setSyncErr(null);
@@ -4285,8 +4327,8 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
         ce('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'10px 0',flexShrink:0}},
           ce('div',{style:{width:34,height:34,borderRadius:8,background:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#EA580C',boxShadow:'0 2px 8px rgba(0,0,0,.15)'}},'H'),
           ce('div',null,
-            ce('div',{style:{fontSize:13,fontWeight:800,color:'#fff',letterSpacing:'-.02em'}},'Hero \u00b7 LDR'),
-            ce('div',{style:{fontSize:9,color:'#FED7AA',letterSpacing:'.07em',fontWeight:600}},'LEAD DISPOSITION DASHBOARD v2.0 \u00b7 BikeDekho')
+            ce('div',{className:'hdr-title'},'Hero \u00b7 LDR'),
+            ce('div',{className:'hdr-sub'},'LEAD DISPOSITION DASHBOARD v2.0 \u00b7 BikeDekho')
           )
         ),
         (()=>{
@@ -4297,15 +4339,19 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
              {l:'L2R%',v:gL>0?(gR/gL*100).toFixed(1)+'%':'\u2014'},{l:'Months',v:effectiveData.maps.lm.length},
              {l:'Retail Till',v:data&&data.retailTillDate?formatRetailDate(data.retailTillDate):'\u2014'}]
             .map((k,i)=>ce('div',{key:i,style:{flexShrink:0,textAlign:'center',minWidth:56}},
-              ce('div',{style:{fontSize:8,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'#FED7AA'}},k.l),
-              ce('div',{style:{fontSize:13,fontWeight:800,color:'#fff',fontFamily:'DM Mono,monospace',letterSpacing:'-.02em'}},k.v)
+              ce('div',{className:'hdr-kpi-lbl'},k.l),
+              ce('div',{className:'hdr-kpi-val'},k.v)
             ))
           );
         })(),
         ce('button',{onClick:handleSync,disabled:syncing,
-          style:{flexShrink:0,padding:'6px 16px',background:syncing?'rgba(255,255,255,.7)':'#fff',border:'none',borderRadius:20,color:'#7C2D12',fontSize:10,cursor:syncing?'default':'pointer',fontFamily:'inherit',fontWeight:700,boxShadow:'0 2px 8px rgba(0,0,0,.12)',display:'flex',alignItems:'center',gap:5}},
+          style:{flexShrink:0,padding:'6px 16px',background:syncing?'rgba(255,255,255,.7)':'#fff',border:'none',borderRadius:20,color:'#7C2D12',cursor:syncing?'default':'pointer',fontFamily:'inherit',fontWeight:700,boxShadow:'0 2px 8px rgba(0,0,0,.12)',display:'flex',alignItems:'center',gap:5,fontSize:10}},
           syncing?ce('span',{style:{display:'inline-block',animation:'spin .8s linear infinite',fontSize:11}},'\u27f3'):'\ud83d\udd04',
           syncing?'Syncing\u2026':'Sync Sheets'
+        ),
+        ce('div',{className:'fs-ctrl'},
+          ce('button',{className:'fs-btn',onClick:decFont,disabled:fontScale<=FONT_MIN,title:'Decrease font size','aria-label':'Decrease font size'},'A\u2212'),
+          ce('button',{className:'fs-btn',onClick:incFont,disabled:fontScale>=FONT_MAX,title:'Increase font size','aria-label':'Increase font size'},'A+')
         ),
         ce('div',{style:{display:'flex',alignItems:'center',background:'#F1F5F9',borderRadius:20,padding:'2px',border:'1px solid #E2E8F0',gap:2,flexShrink:0}},
           ce('button',{onClick:()=>setLeadsMode('create'),
