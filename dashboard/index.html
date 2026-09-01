@@ -4715,7 +4715,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
   },[effectiveData,filters.months]);
 
   const visibleTabs=viewerMode
-    ?TABS.filter(t=>['modelxsrc','statexsrc'].includes(t.id))
+    ?TABS.filter(t=>['modelxsrc','statexsrc','webid','geodealer'].includes(t.id))
     :TABS;
 
   const onDetailedCsv=useCallback((tabName,month)=>{
