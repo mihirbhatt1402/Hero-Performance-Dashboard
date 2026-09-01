@@ -450,6 +450,53 @@ function parseHeroLeadRows(raw){
   let utmRawKey=null;
   for(const alias of utmAliases){if(keyMap[alias]){utmRawKey=keyMap[alias];break;}}
   if(!utmRawKey){const found=Object.keys(keyMap).find(k=>k.includes('utm'));if(found)utmRawKey=keyMap[found];}
+
+  // Detect Web ID column (Direct Push / L1 Nurtured or any reasonable variant)
+  // Normalise spaces around "/" so "direct push / l1 nurtured" and "direct push/ l1 nurtured" all match
+  function normSlash(s){return s.replace(/\s*\/\s*/g,'/');}
+  const WEBID_ALIASES=[
+    'direct push/ l1 nurtured','direct push/l1 nurtured','direct push / l1 nurtured',
+    'directpush/l1nurtured','direct push l1 nurtured','direct_push_l1_nurtured',
+    'direct push/l1nurtured','direct push/ l1nurtured','direct push /l1 nurtured',
+  ];
+  let webIdRawKey=null;
+  // First pass: exact alias match (after same normalization keyMap uses)
+  for(const alias of WEBID_ALIASES){if(keyMap[alias]){webIdRawKey=keyMap[alias];break;}}
+  // Second pass: slash-normalized match across all keyMap entries
+  if(!webIdRawKey){
+    for(const [k,rk] of Object.entries(keyMap)){
+      const kn=normSlash(k);
+      if(kn==='direct push/l1 nurtured'||kn==='direct push/ l1 nurtured'||kn==='direct push /l1 nurtured'){
+        webIdRawKey=rk;break;
+      }
+    }
+  }
+  // Third pass: broad scan — any column containing 'direct' + ('push' or 'nurtured')
+  if(!webIdRawKey){
+    for(const [k,rk] of Object.entries(keyMap)){
+      if(k.includes('direct')&&(k.includes('push')||k.includes('nurtured'))){webIdRawKey=rk;break;}
+    }
+  }
+  // Fourth pass: column containing 'l1' and 'nurtured'
+  if(!webIdRawKey){
+    for(const [k,rk] of Object.entries(keyMap)){
+      if(k.includes('l1')&&k.includes('nurtured')){webIdRawKey=rk;break;}
+    }
+  }
+  // Diagnostics — always logged, not gated, so the user can see it on every sync
+  console.group('[WEB ID DEBUG] Lead Master Web ID column detection');
+  console.log('[WEB ID DEBUG] All Lead Master columns:',Object.keys(raw[0]));
+  console.log('[WEB ID DEBUG] Detected Web ID raw key:',webIdRawKey||'(NOT FOUND)');
+  if(webIdRawKey){
+    const samples=raw.slice(0,10).map(r=>String(r[webIdRawKey]||'').trim());
+    console.log('[WEB ID DEBUG] First 10 raw Web ID values:',samples);
+    // Distinct value counts for full dataset
+    const dist=new Map();
+    for(const r of raw){const v=String(r[webIdRawKey]||'').trim()||'(blank)';dist.set(v,(dist.get(v)||0)+1);}
+    console.log('[WEB ID DEBUG] Distinct Web ID values (full lead sheet):');
+    [...dist.entries()].sort((a,b)=>b[1]-a[1]).forEach(([v,c])=>console.log('  "'+v+'" →',c));
+  }
+  console.groupEnd();
   // Detect lead-date column: try named aliases, then broad key scan for 'date'/'creat'/'time' substrings
   const DATE_ALIASES=['opty created date','opty_created_date','created date','created_date','lead date',
     'lead_date','lead created date','leadcreateddate','creation date','creation_date','createdon',
@@ -517,7 +564,7 @@ function parseHeroLeadRows(raw){
     }
     const lt=get(r,['lt','lead type','leadtype','lead_type']);
     const source=get(r,['medium','source','lead source','leadsource']);
-    const webId=get(r,['direct push/ l1 nurtured','direct push/l1 nurtured','directpush/l1nurtured','direct push l1 nurtured','direct_push_l1_nurtured','l1 nurtured','l1nurtured']);
+    const webId=webIdRawKey?String(r[webIdRawKey]||'').trim():'';
     const model=get(r,['model','vehicle model','vehiclemodel','bike model']);
     const city=get(r,['city','lead city']);
     const state=get(r,['state','lead state']);
@@ -548,7 +595,7 @@ function parseHeroLeadRows(raw){
   const uniqueIds=new Set(rows.map(r=>r.opty_id)).size;
   const statusNameRawKey=keyMap['status_name']||keyMap['status name']||keyMap['statusname']||'';
   const statusNameNonBlankCount=rows.filter(r=>r.statusName&&r.statusName.trim()!=='').length;
-  return{rows,diagnostics:{totalRows:raw.length,included:rows.length,uniqueIds,dupIds:rows.length-uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestDate,latestDate,detectedDateCol,sampleDateValues,allLeadCols,statusNameRawKey,statusNameNonBlankCount}};
+  return{rows,diagnostics:{totalRows:raw.length,included:rows.length,uniqueIds,dupIds:rows.length-uniqueIds,excludedBeforeCutoff,excludedInvalidDate,earliestDate,latestDate,detectedDateCol,sampleDateValues,allLeadCols,statusNameRawKey,statusNameNonBlankCount,webIdDetectedCol:webIdRawKey||'(not detected)'}};
 }
 
 function parseHeroRetailRows(raw){
@@ -4278,6 +4325,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       console.log('[HERO QA] Lead latest included:',ld.latestDate?formatRetailDate(ld.latestDate):'—');
       console.log('[HERO QA] Lead date col detected:',ld.detectedDateCol);
       console.log('[HERO QA] Lead ALL COLUMNS:',ld.allLeadCols);
+      console.log('[HERO QA] Web ID detected col:',ld.webIdDetectedCol);
       if(ld.sampleDateValues&&ld.sampleDateValues.length)
         ld.sampleDateValues.forEach(x=>console.log('[HERO QA] Lead date sample: raw="'+x.raw+'" → '+(x.parsed||'UNPARSEABLE')));
       else console.log('[HERO QA] Lead date samples: (none — col not detected or empty)');
