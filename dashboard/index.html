@@ -2523,9 +2523,7 @@ const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, month
    STATE × SOURCE TAB  (Zone → State → City → Dealer drill-down)
    ════════════════════════════════════════════════════════════════════ */
 const StateSourceTab = React.memo(function StateSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv, rawJoined, leadsMode }) {
-  const { maps, stm, univ: univRaw } = data;
-  const univ = univRaw || [];
-  const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
+  const { maps } = data;
 
   const allSrcs   = useMemo(() => [...new Set(maps.src)], [maps]);
   const srcGroups = useMemo(() => buildSrcGroups(allSrcs), [allSrcs]);
@@ -2534,18 +2532,14 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
   }), []);
 
-  // Exclusive accordion — one open per level; opening a new region resets state/AO
+  // Region accordion only — State is leaf row. AO inactive.
   const [openRegion, setOpenRegion] = useState(null);
-  const [openState,  setOpenState]  = useState(null);
-  const [openAO,     setOpenAO]     = useState(null);
-  const onClickRegion = useCallback(r => { setOpenRegion(p => p===r?null:r); setOpenState(null); setOpenAO(null); }, []);
-  const onClickState  = useCallback(s => { setOpenState(p => p===s?null:s); setOpenAO(null); }, []);
-  const onClickAO     = useCallback(a => { setOpenAO(p => p===a?null:a); }, []);
+  const onClickRegion = useCallback(r => setOpenRegion(p => p===r?null:r), []);
 
   const mSet = useMemo(() => new Set(months), [months]);
 
-  // Build Region→State→AO→Source hierarchy from rawJoined for a single month M,
-  // or (M===null) for all selected months.
+  // Build Region→State hierarchy from rawJoined.
+  // M=null aggregates all selected months; M=string aggregates that exact month.
   const buildHierarchy = useCallback((M) => {
     if (!rawJoined || !rawJoined.length) return { regionMap: new Map(), gL:0, gR:0, grandSrc: new Map() };
     const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf } = filters;
@@ -2568,7 +2562,6 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       if (!allCity&& (cf  === FILTER_CLEARED || !cf.has(r.city)))    continue;
       const region = (r.region || '').trim() || 'Unknown';
       const state  = (r.state  || '').trim() || 'Unknown';
-      const ao     = (r.ao     || '').trim() || 'Unknown';
       const src    = r.source  || 'Unknown';
       const isR    = isRetailedLead(r);
       const ret    = RT==='dms' ? (isR&&r.callType==='dms'?1:0) : RT==='co' ? (isR&&r.callType==='co'?1:0) : isR?1:0;
@@ -2578,19 +2571,16 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       const reg = regionMap.get(region);
       reg.l++; reg.r+=ret;
       const rsc=reg.bySrc.get(src)||[0,0]; rsc[0]++; rsc[1]+=ret; reg.bySrc.set(src,rsc);
-      if (!reg.stateMap.has(state)) reg.stateMap.set(state, {l:0,r:0,bySrc:new Map(),aoMap:new Map()});
+      if (!reg.stateMap.has(state)) reg.stateMap.set(state, {l:0,r:0,bySrc:new Map()});
       const stEntry = reg.stateMap.get(state);
       stEntry.l++; stEntry.r+=ret;
       const ssc=stEntry.bySrc.get(src)||[0,0]; ssc[0]++; ssc[1]+=ret; stEntry.bySrc.set(src,ssc);
-      if (!stEntry.aoMap.has(ao)) stEntry.aoMap.set(ao, {l:0,r:0,bySrc:new Map()});
-      const aoEntry = stEntry.aoMap.get(ao);
-      aoEntry.l++; aoEntry.r+=ret;
-      const asc=aoEntry.bySrc.get(src)||[0,0]; asc[0]++; asc[1]+=ret; aoEntry.bySrc.set(src,asc);
     }
     return { regionMap, gL, gR, grandSrc };
   }, [rawJoined, filters, mSet, RT, leadsMode]);
 
-  const renderMonthGrid = useCallback((M) => {
+  // Unified renderer for both All Months (M=null) and individual months (M=string).
+  const renderGrid = useCallback((M) => {
     const { regionMap, gL, gR, grandSrc } = buildHierarchy(M);
     if (gL === 0 && gR === 0) return null;
     const grandRL = gR;
@@ -2604,8 +2594,8 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     const grandSrcMap = mkSrcMap(grandSrc);
 
     function grpCells(srcMap, grp, denomL, denomR) {
-      const denom    = denomL != null ? denomL    : gL;
-      const denomRet = denomR != null ? denomR    : grandRL;
+      const denom    = denomL != null ? denomL : gL;
+      const denomRet = denomR != null ? denomR : grandRL;
       const exp = expandedGrps.has(grp.id);
       if (!exp) {
         const a = grpSum(srcMap, grp.srcs);
@@ -2629,23 +2619,10 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       });
     }
 
-    function blankSrcCells(bgColor) {
-      return srcGroups.flatMap((grp) => {
-        const exp = expandedGrps.has(grp.id);
-        const slots = exp ? grp.subGroups.filter(sg=>sg.srcs.length>0).length : 1;
-        return Array.from({length:slots},(_,i) => [
-          ce('td',{key:grp.id+i+'l',style:{color:'#CBD5E1',background:bgColor,borderLeft:i===0?'2px solid '+grp.color+'22':undefined}},''),
-          ce('td',{key:grp.id+i+'lc',style:{color:'#CBD5E1',background:bgColor}},''),
-          ce('td',{key:grp.id+i+'r',style:{color:'#CBD5E1',background:bgColor}},''),
-          ce('td',{key:grp.id+i+'rc',style:{color:'#CBD5E1',background:bgColor}},''),
-          ce('td',{key:grp.id+i+'q',style:{color:'#CBD5E1',background:bgColor}},''),
-        ]).flat();
-      });
-    }
-
     // ── Headers ──
+    const mk = M===null ? 'all' : M;
     const hdr1 = [
-      ce('th',{key:'dim',className:'left',rowSpan:2,style:{minWidth:240,zIndex:3,background:'#1D4ED8',color:'#fff'}},'Region / State / AO / Source'),
+      ce('th',{key:'dim',className:'left',rowSpan:2,style:{minWidth:220,zIndex:3,background:'#1D4ED8',color:'#fff'}},'Region / State'),
       ce('th',{key:'tot',colSpan:5,style:{background:'#1D4ED8',color:'#fff'}},'TOTAL'),
       ...(viewerMode ? [] : srcGroups.map(grp => {
         const exp = expandedGrps.has(grp.id);
@@ -2688,8 +2665,8 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       const isRegOpen = openRegion === region;
       const regL2R = reg.l > 0 ? reg.r / reg.l * 100 : 0;
 
-      // ── Region row ──
-      bodyRows.push(ce('tr',{key:'reg_'+region,className:'section-row',onClick:()=>onClickRegion(region),style:{cursor:'pointer'}},
+      // ── Region row (expandable) ──
+      bodyRows.push(ce('tr',{key:'reg_'+mk+'_'+region,className:'section-row',onClick:()=>onClickRegion(region),style:{cursor:'pointer'}},
         ce('td',{className:'label',style:{color:'#0D47A1'}},
           ce('span',{style:{display:'flex',alignItems:'center',gap:6}},
             ce('span',{style:{fontSize:11}},isRegOpen?'▾':'▸'),
@@ -2708,71 +2685,21 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
         const stEntry = reg.stateMap.get(state);
         if (!stEntry.l) continue;
         const stSrcMap = mkSrcMap(stEntry.bySrc);
-        const isSOpen = openState === state;
         const stL2R = stEntry.l > 0 ? stEntry.r / stEntry.l * 100 : 0;
 
-        // ── State row ──
-        bodyRows.push(ce('tr',{key:'st_'+region+'_'+state,className:'sub-row',onClick:()=>onClickState(state),style:{cursor:'pointer'}},
-          ce('td',{className:'sub-label',style:{paddingLeft:28}},
-            ce('span',{style:{display:'flex',alignItems:'center',gap:5}},
-              ce('span',{style:{fontSize:10,color:'#94A3B8',flexShrink:0}},isSOpen?'▾':'▸'),
-              state
-            )
-          ),
+        // ── State row (leaf — AO inactive) ──
+        bodyRows.push(ce('tr',{key:'st_'+mk+'_'+region+'_'+state,className:'sub-row'},
+          ce('td',{className:'sub-label',style:{paddingLeft:28}},state),
           ce('td',null,Nf(stEntry.l)),ce('td',null,gL>0?Pf(stEntry.l/gL*100):'—'),
           ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(stEntry.r)),ce('td',null,grandRL>0?Pf(stEntry.r/grandRL*100):'—'),
           ce('td',{style:{color:'#D97706',fontWeight:600}},stL2R>0?Pf(stL2R):'—'),
           ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(stSrcMap,grp,reg.l,reg.r)))
         ));
-        if (openState !== state) continue;
-
-        const sortedAOs = [...stEntry.aoMap.keys()].sort();
-        for (const ao of sortedAOs) {
-          const aoEntry = stEntry.aoMap.get(ao);
-          if (!aoEntry.l) continue;
-          const aoSrcMap = mkSrcMap(aoEntry.bySrc);
-          const isAOOpen = openAO === ao;
-          const aoL2R = aoEntry.l > 0 ? aoEntry.r / aoEntry.l * 100 : 0;
-
-          // ── AO row ──
-          bodyRows.push(ce('tr',{key:'ao_'+region+'_'+state+'_'+ao,className:'city-row',onClick:()=>onClickAO(ao),style:{cursor:'pointer'}},
-            ce('td',{className:'label',style:{paddingLeft:48,fontWeight:500,fontSize:11.5,color:'#166534',background:'#F0FDF4',borderRight:'2px solid #BBF7D0'}},
-              ce('span',{style:{display:'flex',alignItems:'center',gap:5}},
-                ce('span',{style:{fontSize:10,color:'#86EFAC',flexShrink:0}},isAOOpen?'▾':'▸'),
-                ao
-              )
-            ),
-            ce('td',{style:{background:'#F0FDF4'}},Nf(aoEntry.l)),
-            ce('td',{style:{background:'#F0FDF4'}},gL>0?Pf(aoEntry.l/gL*100):'—'),
-            ce('td',{style:{background:'#F0FDF4',color:'#16A34A',fontWeight:700}},Nf(aoEntry.r)),
-            ce('td',{style:{background:'#F0FDF4'}},grandRL>0?Pf(aoEntry.r/grandRL*100):'—'),
-            ce('td',{style:{background:'#F0FDF4',color:'#D97706',fontWeight:600}},aoL2R>0?Pf(aoL2R):'—'),
-            ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(aoSrcMap,grp,stEntry.l,stEntry.r)))
-          ));
-          if (!isAOOpen) continue;
-
-          // ── Source rows (leaf, sorted by leads desc) ──
-          const sortedSrcs = [...aoEntry.bySrc.keys()].sort((a,b)=>(aoEntry.bySrc.get(b)[0]||0)-(aoEntry.bySrc.get(a)[0]||0));
-          for (const src of sortedSrcs) {
-            const sv = aoEntry.bySrc.get(src);
-            const sL = sv[0], sR = sv[1];
-            const sL2R = sL > 0 ? sR / sL * 100 : 0;
-            bodyRows.push(ce('tr',{key:'src_'+region+'_'+state+'_'+ao+'_'+src,className:'dealer-row'},
-              ce('td',{className:'label',style:{paddingLeft:68,fontWeight:400,fontSize:11,color:'#64748B',background:'#FAFAFA',borderRight:'2px solid #F1F5F9'}},src),
-              ce('td',{style:{background:'#FAFAFA'}},Nf(sL)),
-              ce('td',{style:{background:'#FAFAFA'}},gL>0?Pf(sL/gL*100):'—'),
-              ce('td',{style:{background:'#FAFAFA',color:'#0D9488',fontWeight:700}},Nf(sR)),
-              ce('td',{style:{background:'#FAFAFA'}},grandRL>0?Pf(sR/grandRL*100):'—'),
-              ce('td',{style:{background:'#FAFAFA',color:'#D97706',fontWeight:600}},sL2R>0?Pf(sL2R):'—'),
-              ...(viewerMode ? [] : blankSrcCells('#FAFAFA'))
-            ));
-          }
-        }
       }
     }
 
-    // Grand Total at bottom
-    bodyRows.push(ce('tr',{key:'gtotal',className:'total-row'},
+    // Grand Total
+    bodyRows.push(ce('tr',{key:'gtotal_'+mk,className:'total-row'},
       ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
       ce('td',null,Nf(gL)),ce('td',null,'100.0%'),
       ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(gR)),ce('td',null,'100.0%'),
@@ -2781,83 +2708,48 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     ));
 
     return { grand, hdr1, hdr2, bodyRows, regionMap };
-  }, [buildHierarchy, expandedGrps, openRegion, openState, openAO, srcGroups, viewerMode, onToggleGrp, onClickRegion, onClickState, onClickAO]);
+  }, [buildHierarchy, expandedGrps, openRegion, srcGroups, viewerMode, onToggleGrp, onClickRegion]);
 
-  const stateSummaryAgg = useMemo(() => {
-    const univF = makeUnivFilter(filters);
-    const allState = !filters.states || filters.states.size === 0;
-    if (univF) {
-      return aggAll(
-        univ, maps, filters.months, filters.sources,
-        (row,m) => m.st[row[2]], (row,m) => m.src[row[1]], (row,m) => m.lm[row[4]],
-        allState ? univF : (row,m) => univF(row,m) && filters.states.has(m.st[row[2]]),
-        getLR
-      );
-    }
-    return aggAll(
-      stm, maps, filters.months, filters.sources,
-      (row,m) => m.st[row[0]], (row,m) => m.src[row[1]], (row,m) => m.lm[row[2]],
-      allState ? null : (row,m) => filters.states.has(m.st[row[0]]),
-      getLR
+  // All-months grid drives the summary card (same logic as monthly grids, M=null)
+  const allMonthsGrid = useMemo(() => renderGrid(null), [renderGrid]);
+
+  function exportGridCsv(grid, filename) {
+    const aoa = [['Region','State','Leads','Retail','L2R%']];
+    for (const [reg,rv] of grid.regionMap)
+      for (const [st,sv] of rv.stateMap)
+        aoa.push([reg, st, sv.l, sv.r, sv.l>0?+(sv.r/sv.l*100).toFixed(1):0]);
+    aoa.push(['','Grand Total',grid.grand.l,grid.grand.r,grid.grand.l>0?+(grid.grand.r/grid.grand.l*100).toFixed(1):0]);
+    exportCsv(aoa, filename);
+  }
+
+  function renderCard(grid, title, onCsvClick, detailedKey) {
+    return ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
+      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+        ce('div', { className:'section-title', style:{marginBottom:0} }, title),
+        ce('div',{style:{display:'flex',gap:0}},
+          ce(CsvBtn, { onClick: onCsvClick }),
+          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('StateSource', detailedKey) })
+        )
+      ),
+      ce('div', { className:'scroll-x' },
+        ce('table', null,
+          ce('thead', null, ce('tr', null, ...grid.hdr1), ce('tr', null, ...grid.hdr2)),
+          ce('tbody', null, ...grid.bodyRows)
+        )
+      )
     );
-  }, [stm, univ, maps, filters, getLR]);
-
-  function exportStateSourceCsv(agg, filename) {
-    const hdr = ['State', 'Leads', 'Retail', 'L2R%'];
-    const rows = [hdr];
-    const entries = Object.entries(agg.dimAggs).sort((a,b) => b[1].total.l - a[1].total.l);
-    for (const [dk, da] of entries)
-      rows.push([dk, da.total.l, da.total.r, +da.total.l2r.toFixed(1)]);
-    rows.push(['Grand Total', agg.grand.l, agg.grand.r, +agg.grand.l2r.toFixed(1)]);
-    exportCsv(rows, filename);
   }
 
   return ce('div', { className:'fade-up' },
-    stateSummaryAgg && stateSummaryAgg.grand.l > 0 &&
-      ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
-        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
-          ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — State Summary'),
-          ce('div',{style:{display:'flex',gap:0}},
-            ce(CsvBtn, { onClick:()=>exportStateSourceCsv(stateSummaryAgg,'Hero_StateSource_AllMonths.csv') }),
-            onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('StateSource', null) })
-          )
-        ),
-        ce(DimGrid, { agg:stateSummaryAgg, srcGroups, dimLabel:'State', expandedGrps, onToggleGrp, viewerMode })
-      ),
+    allMonthsGrid && allMonthsGrid.grand.l > 0 &&
+      renderCard(allMonthsGrid, '∑ All Months — Region × State',
+        ()=>exportGridCsv(allMonthsGrid,'Hero_StateSource_AllMonths.csv'), null),
     months.map(M => {
-      const grid = renderMonthGrid(M);
+      const grid = renderGrid(M);
       if (!grid || (grid.grand.l === 0 && grid.grand.r === 0)) return null;
-      return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
-        ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
-          ce('div', { className:'section-title', style:{marginBottom:0} }, 'Region × State × AO × Source — ' + M),
-          ce('div',{style:{display:'flex',gap:0}},
-            ce(CsvBtn, { onClick:()=>{
-              const aoa=[['Region','State','AO','Source','Leads','Retail','L2R%']];
-              for(const [reg,rv] of grid.regionMap){
-                for(const [st,sv] of rv.stateMap){
-                  for(const [ao,av] of sv.aoMap){
-                    for(const [src,srcarr] of av.bySrc){
-                      const l=srcarr[0],r=srcarr[1];
-                      aoa.push([reg,st,ao,src,l,r,l>0?+(r/l*100).toFixed(1):0]);
-                    }
-                  }
-                }
-              }
-              aoa.push(['','','','Grand Total',grid.grand.l,grid.grand.r,grid.grand.l>0?+(grid.grand.r/grid.grand.l*100).toFixed(1):0]);
-              exportCsv(aoa,`Hero_StateSource_${M.replace(/[^a-z0-9]/gi,'_')}.csv`);
-            }}),
-            onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('StateSource', M) })
-          )
-        ),
-        ce('div', { className:'scroll-x' },
-          ce('table', null,
-            ce('thead', null,
-              ce('tr', null, ...grid.hdr1),
-              ce('tr', null, ...grid.hdr2),
-            ),
-            ce('tbody', null, ...grid.bodyRows)
-          )
-        )
+      return ce(React.Fragment, { key:M },
+        renderCard(grid, 'Region × State — '+M,
+          ()=>exportGridCsv(grid,`Hero_StateSource_${M.replace(/[^a-z0-9]/gi,'_')}.csv`), M)
       );
     })
   );
