@@ -722,7 +722,7 @@ function joinHeroData(leadResult,retailResult){
     const callType=isBooked?(sorted[0].callType||'other'):'other';
     const retailDate=isBooked?(sorted[0].retailDate||null):null;
     const purchasedModel=isBooked?(sorted[0].purchasedModel||''):'';
-    return{opty_id:lr.opty_id,lt:lr.lt,source:lr.source,model:lr.model,city:lr.city,state:lr.state,
+    return{opty_id:lr.opty_id,lt:lr.lt,source:lr.source,webId:lr.webId||'Unknown',model:lr.model,city:lr.city,state:lr.state,
       lead_month:lr.lead_month,booking_month,isUnique:lr.isUnique,isBooked,callType,
       leadDate:lr.leadDate||null,retailDate,purchasedModel,
       encryptMobile:lr.encryptMobile||'',idVerifiedLead:lr.idVerifiedLead||'',brand:lr.brand||'',
