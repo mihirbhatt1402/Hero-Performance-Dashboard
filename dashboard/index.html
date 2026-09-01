@@ -2349,9 +2349,10 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
   };
 
   const thStyle = (align) => ({
-    cursor:'pointer', textAlign:align||'center', padding:'8px 10px', background:'#f1f5f9',
-    fontWeight:600, fontSize:12, userSelect:'none', whiteSpace:'nowrap',
-    borderBottom:'2px solid #e2e8f0', position:'sticky', top:0
+    cursor:'pointer', textAlign:align||'center', padding:'9px 10px', background:'#1E3A8A',
+    color:'#fff', fontWeight:700, fontSize:9.5, textTransform:'uppercase', letterSpacing:'.08em',
+    userSelect:'none', whiteSpace:'nowrap', border:'1px solid rgba(255,255,255,.15)',
+    position:'sticky', top:0, zIndex:2
   });
   const TH = (col, label, align) => ce('th', { key:col, onClick:()=>toggleSort(col), style:thStyle(align) }, label + arrow(col));
 
