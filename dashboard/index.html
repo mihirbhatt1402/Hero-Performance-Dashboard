@@ -517,6 +517,7 @@ function parseHeroLeadRows(raw){
     }
     const lt=get(r,['lt','lead type','leadtype','lead_type']);
     const source=get(r,['medium','source','lead source','leadsource']);
+    const webId=get(r,['direct push/ l1 nurtured','direct push/l1 nurtured','directpush/l1nurtured','direct push l1 nurtured','direct_push_l1_nurtured','l1 nurtured','l1nurtured']);
     const model=get(r,['model','vehicle model','vehiclemodel','bike model']);
     const city=get(r,['city','lead city']);
     const state=get(r,['state','lead state']);
@@ -538,7 +539,7 @@ function parseHeroLeadRows(raw){
       if(!latestDate||leadDate>latestDate)latestDate=leadDate;
     }
     rows.push({
-      opty_id,lt:lt||'Unknown',source:source||'Unknown',
+      opty_id,lt:lt||'Unknown',source:source||'Unknown',webId:webId||'Unknown',
       model:canonicalModel(model)||'Unknown',city:city||'Unknown',state:canonicalState(state)||'Unknown',
       lead_month,leadDate:leadDate||null,isUnique,
       encryptMobile,idVerifiedLead,brand,verifiedDealer,dealerId,oemCrmId,dealerName,enquiryId,utmCampaign,statusName
@@ -725,6 +726,7 @@ function buildPayload(joinedRows){
   const stArr=[],stMap=Object.create(null);
   const ltArr=[],ltMap=Object.create(null);
   const cityArr=[],cityMap=Object.create(null);
+  const wiArr=[],wiMap=Object.create(null);
   function idx(arr,map,val){if(val in map)return map[val];const i=arr.length;arr.push(val);map[val]=i;return i;}
   for(const r of joinedRows){
     idx(lmArr,lmMap,r.lead_month||'Unknown');
@@ -734,6 +736,7 @@ function buildPayload(joinedRows){
     idx(stArr,stMap,r.state||'Unknown');
     idx(ltArr,ltMap,r.lt||'Unknown');
     idx(cityArr,cityMap,r.city||'Unknown');
+    idx(wiArr,wiMap,r.webId||'Unknown');
   }
   const city_state=new Array(cityArr.length).fill(0);
   for(const r of joinedRows) city_state[cityMap[r.city||'Unknown']]=stMap[r.state||'Unknown'];
@@ -753,6 +756,10 @@ function buildPayload(joinedRows){
   // On Update accumulators (booking_month for booked; lead_month for unbooked)
   const bm_mA=new Map(),bm_smA=new Map(),bm_mmA=new Map(),bm_stmA=new Map(),bm_ltmA=new Map();
   const bm_mxstA=new Map(),bm_cmA=new Map(),bm_csmA=new Map(),bm_cxmA=new Map(),bm_univA=new Map();
+
+  // Web ID dimension (Direct Push / L1 Nurtured)
+  const wmA=new Map(),cwmA=new Map(),wunivA=new Map();
+  const bm_wmA=new Map(),bm_cwmA=new Map(),bm_wunivA=new Map();
 
   // Retail Dispersion (bdm): [rep_days, src_idx, lm_idx, L, R_all, R_dms, R_co]
   // rep_days = representative numeric value per BD bucket (passes through bdBucket correctly)
@@ -777,6 +784,7 @@ function buildPayload(joinedRows){
     const sti=stMap[r.state||'Unknown'];
     const lti=ltMap[r.lt||'Unknown'];
     const ci=cityMap[r.city||'Unknown'];
+    const wi=wiMap[r.webId||'Unknown'];
     const L=1,R=isRetailed(r)?1:0;
     const Rd=(R&&r.callType==='dms')?1:0;
     const Rc=(R&&r.callType==='co')?1:0;
@@ -818,6 +826,14 @@ function buildPayload(joinedRows){
     a4(bm_cxmA,ci+'|'+mi+'|'+bmi,L,R,Rd,Rc);
     a4(bm_univA,mi+'|'+si+'|'+sti+'|'+lti+'|'+bmi,L,R,Rd,Rc);
 
+    // Web ID (Direct Push / L1 Nurtured) dimension
+    a4(wmA,wi+'|'+li,L,R,Rd,Rc);
+    a4(cwmA,ci+'|'+wi+'|'+li,L,R,Rd,Rc);
+    a4(wunivA,mi+'|'+wi+'|'+sti+'|'+lti+'|'+li,L,R,Rd,Rc);
+    a4(bm_wmA,wi+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_cwmA,ci+'|'+wi+'|'+bmi,L,R,Rd,Rc);
+    a4(bm_wunivA,mi+'|'+wi+'|'+sti+'|'+lti+'|'+bmi,L,R,Rd,Rc);
+
     // Retail Dispersion (day-bucket legacy — kept for data integrity)
     if(r.isBooked&&r.leadDate&&r.retailDate){
       const days=Math.max(0,Math.round((r.retailDate.getTime()-r.leadDate.getTime())/86400000));
@@ -850,7 +866,7 @@ function buildPayload(joinedRows){
   const f8=m=>[...m.entries()].map(([k,v])=>{const[a,b,c,d,e,f,g,h]=k.split('|');return[+a,+b,+c,+d,+e,+f,+g,+h,v[0],v[1],v[2],v[3]];});
   return{
     t:now,
-    maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state,purMdl:purMdlArr},
+    maps:{lm:lmArr,src:srcArr,mdl:mdlArr,st:stArr,lt:ltArr,city:cityArr,city_state,purMdl:purMdlArr,webId:wiArr},
     // On Create matrices (lead_month dimension)
     monthly:f1(monthlyA),sm:f2(smA),mm:f3(mmA),stm:f3(stmA),ltm:f3(ltmA),
     mxst:f3(mxstA),cm:f2(cmA),csm:f3(csmA),cxm:f3(cxmA),univ:f5(univA),
@@ -859,6 +875,8 @@ function buildPayload(joinedRows){
     // On Update matrices (booking_month dimension)
     bm_monthly:f1(bm_mA),bm_sm:f2(bm_smA),bm_mm:f3(bm_mmA),bm_stm:f3(bm_stmA),bm_ltm:f3(bm_ltmA),
     bm_mxst:f3(bm_mxstA),bm_cm:f2(bm_cmA),bm_csm:f3(bm_csmA),bm_cxm:f3(bm_cxmA),bm_univ:f5(bm_univA),
+    wm:f2(wmA),cwm:f3(cwmA),wuniv:f5(wunivA),
+    bm_wm:f2(bm_wmA),bm_cwm:f3(bm_cwmA),bm_wuniv:f5(bm_wunivA),
     disp:[],u_disp:[],zm:[],u_zm:[],bdm:f3(bdmA),u_bdm:f3(u_bdmA),rdm:f7(rdmA),rdmx:f8(rdmxA),
     mlt:[],stlt:[],cdm:[],cdsm:[],stcm:[],
     u_mlt:[],u_stlt:[],u_cdm:[],u_cdsm:[],u_stcm:[],
@@ -1994,6 +2012,181 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onD
               const tot=fin(l,r);
               return ce('tr',{key:src},
                 ce('td',{className:'label'},src),
+                ce('td',null,Nf(tot.l)),
+                ce('td',null,crossMonthTotals.l>0?Pf(tot.l/crossMonthTotals.l*100):'—'),
+                ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
+                ce('td',null,crossMonthTotals.r>0?Pf(tot.r/crossMonthTotals.r*100):'—'),
+                ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
+              );
+            }),
+            ce('tr',{key:'gtotal',className:'total-row'},
+              ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
+              ce('td',null,Nf(crossMonthTotals.l)),
+              ce('td',null,'100.0%'),
+              ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(crossMonthTotals.r)),
+              ce('td',null,'100.0%'),
+              ce('td',{style:{color:'#D97706',fontWeight:700}},crossMonthTotals.l2r>0?Pf(crossMonthTotals.l2r):'—'),
+            )
+          )
+        )
+      )
+    ),
+    months.map(renderMonth)
+  );
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   WEB ID TAB  (Direct Push / L1 Nurtured dimension)
+   ════════════════════════════════════════════════════════════════════ */
+const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDetailedCsv }) {
+  const { maps, wm: wmRaw, wuniv: wunivRaw, cwm: cwmRaw } = data;
+  const wuniv = wunivRaw || [];
+  const cwm   = cwmRaw   || [];
+  const wm    = wmRaw    || [];
+  const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
+  const hasCityF = !!(filters.cities && filters.cities.size > 0 && maps.city);
+
+  const renderMonth = useCallback((M) => {
+    const univF = makeUnivFilter(filters);
+    const byWid = new Map();
+    let gL=0, gR=0;
+    if (univF) {
+      for (const row of wuniv) {
+        if (maps.lm[row[4]] !== M) continue;
+        if (!univF(row, maps)) continue;
+        const wid = maps.webId[row[1]];
+        const [l,r] = getLR(row);
+        gL+=l; gR+=r;
+        const c = byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
+      }
+    } else if (hasCityF && cwm.length > 0) {
+      for (const row of cwm) {
+        if (maps.lm[row[2]] !== M) continue;
+        const city = maps.city[row[0]];
+        if (!filters.cities.has(city)) continue;
+        const wid = maps.webId[row[1]];
+        const [l,r] = getLR(row);
+        gL+=l; gR+=r;
+        const c = byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
+      }
+    } else {
+      for (const row of wm) {
+        if (maps.lm[row[1]] !== M) continue;
+        const wid = maps.webId[row[0]];
+        const [l,r] = getLR(row);
+        gL+=l; gR+=r;
+        const c = byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
+      }
+    }
+    if (gL === 0 && gR === 0) return null;
+    const sorted = [...byWid.entries()].sort((a,b) => b[1][0]-a[1][0]);
+    const grand = fin(gL, gR);
+    return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
+      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+        ce('div', { className:'section-title', style:{marginBottom:0} }, M),
+        ce(CsvBtn, { onClick:()=>{
+          const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
+          sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+          aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
+          exportCsv(aoa,'Hero_WebID_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
+        }})
+      ),
+      ce('div', { className:'scroll-x' },
+        ce('table', null,
+          ce('thead', null,
+            ce('tr', null,
+              ce('th',{className:'left',style:{minWidth:180}},'Web ID'),
+              ce('th',null,'Leads'),
+              ce('th',null,'L.Contrib%'),
+              ce('th',null,'Retail'),
+              ce('th',null,'R.Contrib%'),
+              ce('th',null,'L2R%'),
+            )
+          ),
+          ce('tbody', null,
+            ...sorted.map(([wid,[l,r]]) => {
+              const tot = fin(l,r);
+              return ce('tr',{key:wid},
+                ce('td',{className:'label'},wid),
+                ce('td',null,Nf(tot.l)),
+                ce('td',null,gL>0?Pf(tot.l/gL*100):'—'),
+                ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
+                ce('td',null,gR>0?Pf(tot.r/gR*100):'—'),
+                ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
+              );
+            }),
+            ce('tr',{key:'gtotal',className:'total-row'},
+              ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
+              ce('td',null,Nf(grand.l)),
+              ce('td',null,'100.0%'),
+              ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(grand.r)),
+              ce('td',null,'100.0%'),
+              ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
+            )
+          )
+        )
+      )
+    );
+  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF]);
+
+  const crossMonthTotals = useMemo(() => {
+    const univF = makeUnivFilter(filters);
+    let gL=0, gR=0;
+    const mSet = new Set(months);
+    const byWid = new Map();
+    if (univF) {
+      for (const row of wuniv) {
+        if (!mSet.has(maps.lm[row[4]])) continue;
+        if (!univF(row, maps)) continue;
+        const wid = maps.webId[row[1]];
+        const [l,r] = getLR(row); gL+=l; gR+=r;
+        const c=byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
+      }
+    } else if (hasCityF && cwm.length > 0) {
+      for (const row of cwm) {
+        if (!mSet.has(maps.lm[row[2]])) continue;
+        const city = maps.city[row[0]];
+        if (!filters.cities.has(city)) continue;
+        const wid = maps.webId[row[1]];
+        const [l,r] = getLR(row); gL+=l; gR+=r;
+        const c=byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
+      }
+    } else {
+      for (const row of wm) {
+        if (!mSet.has(maps.lm[row[1]])) continue;
+        const wid = maps.webId[row[0]];
+        const [l,r] = getLR(row); gL+=l; gR+=r;
+        const c=byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
+      }
+    }
+    const sorted = [...byWid.entries()].sort((a,b)=>b[1][0]-a[1][0]);
+    return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted };
+  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF, months]);
+
+  return ce('div', {className:'fade-up'},
+    crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
+      ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
+        ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Web ID Summary'),
+        ce(CsvBtn, { onClick:()=>{
+          const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
+          crossMonthTotals.sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+          aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
+          exportCsv(aoa,'Hero_WebID_AllMonths.csv');
+        }})
+      ),
+      ce('div', { className:'scroll-x' },
+        ce('table', null,
+          ce('thead', null, ce('tr', null,
+            ce('th',{className:'left',style:{minWidth:180}},'Web ID'),
+            ce('th',null,'Leads'), ce('th',null,'L.Contrib%'),
+            ce('th',null,'Retail'), ce('th',null,'R.Contrib%'),
+            ce('th',null,'L2R%'),
+          )),
+          ce('tbody', null,
+            ...crossMonthTotals.sorted.map(([wid,[l,r]]) => {
+              const tot=fin(l,r);
+              return ce('tr',{key:wid},
+                ce('td',{className:'label'},wid),
                 ce('td',null,Nf(tot.l)),
                 ce('td',null,crossMonthTotals.l>0?Pf(tot.l/crossMonthTotals.l*100):'—'),
                 ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
@@ -4009,6 +4202,7 @@ const FONT_MIN=FONT_STEPS[0],FONT_MAX=FONT_STEPS[FONT_STEPS.length-1];
 const TABS = [
   { id:'overview',    label:'Overview' },
   { id:'source',      label:'Source Analysis' },
+  { id:'webid',       label:'Web ID' },
   { id:'ltxsrc',      label:'LT \u00d7 Source' },
   { id:'modelxsrc',   label:'Model \u00d7 Source' },
   { id:'statexsrc',   label:'State \u00d7 Source' },
@@ -4278,6 +4472,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       ...data,
       monthly:data.bm_monthly,sm:data.bm_sm,ltm:data.bm_ltm,mm:data.bm_mm,stm:data.bm_stm,
       mxst:data.bm_mxst,cm:data.bm_cm||[],csm:data.bm_csm||[],cxm:data.bm_cxm||[],univ:data.bm_univ,
+      wm:data.bm_wm||[],cwm:data.bm_cwm||[],wuniv:data.bm_wuniv||[],
       mlt:data.mlt||[],stlt:data.stlt||[],cdm:data.cdm||[],cdsm:data.cdsm||[],stcm:data.stcm||[],
       disp:data.disp||[],
     };
@@ -4306,6 +4501,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     switch(tab){
       case 'overview':    return ce(OverviewTab,   props);
       case 'source':      return ce(SourceTab,      props);
+      case 'webid':       return ce(WebIdTab,       props);
       case 'ltxsrc':      return ce(LTSourceTab,    props);
       case 'modelxsrc':   return ce(ModelSourceTab, props);
       case 'statexsrc':   return ce(StateSourceTab, props);
