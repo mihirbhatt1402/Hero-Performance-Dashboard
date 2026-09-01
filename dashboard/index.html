@@ -2302,7 +2302,8 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
       if (wid === 'wip') e.wip++;
       else if (wid === 'direct push') e.dp++;
       else if (wid === 'l1 nurtured') e.l1++;
-      else if (wid === 'lost') e.lost++;
+      const sn = String(r.statusName || '').trim().toLowerCase();
+      if (sn === 'lost not contactable' || sn === 'lost not purchased' || sn === 'lost purchased') e.lost++;
     }
     return [...acc.values()];
   }, [rawJoined, filters, mSet, RT, leadsMode]);
