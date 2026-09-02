@@ -272,6 +272,8 @@ function heroNormTargetAo(ao) {
   // Known alias pairs
   if (/^bangal/i.test(s)) s = 'Bengaluru';
   if (/^noida$/i.test(s)) return 'NOIDA';
+  if (/^an[e]$/i.test(s)) return 'Assam & NE';    // Lead Master: ANe, Ane
+  if (/^delhi\s+ncr$/i.test(s)) return 'Delhi';    // Lead Master: Delhi Ncr
   return _heroTargetAoLookup.get(s.toLowerCase()) || s;
 }
 
@@ -285,6 +287,36 @@ const _heroTargetModelLookup = (function(){
 function heroNormTargetModel(model) {
   if (!model) return '';
   return _heroTargetModelLookup.get(model.trim().toLowerCase()) || model.trim();
+}
+
+// Target vs Delivery tab: explicit Lead Master full model name → target model family.
+// Lead Master uses specific variant names (e.g. "Hero Xtreme 160R 4V"); target Excel
+// uses family names (e.g. "Xtreme 160"). Each entry is individually verified against
+// the "Quarterly Plan (Revised)" sheet which has exactly 11 model family columns.
+// Lucknow / Patna: Lead Master has no sub-AO field to split into -1 / -2 targets;
+// those records remain unattributed — reported by heroTargetVsDeliveryQA().
+const HERO_TD_MODEL_MAP = new Map([
+  ['hero destini 110',        'Destini'],
+  ['hero destini 125',        'Destini'],
+  ['hero destini prime',      'Destini'],
+  ['hero glamour',            'Glamour'],
+  ['hero glamour x 125',      'Glamour'],
+  ['hero karizma xmr',        'Karizma'],
+  ['hero passion plus',       'Passion'],
+  ['hero pleasure plus',      'Pleasure'],
+  ['hero super splendor',     'Super Splendor'],
+  ['hero super splendor xtec','Super Splendor'],
+  ['hero xpulse 210',         'Xpulse'],
+  ['hero xoom 110',           'Xoom'],
+  ['hero xoom 125',           'Xoom'],
+  ['hero xtreme 125r',        'Xtreme 125'],
+  ['hero xtreme 160r',        'Xtreme 160'],
+  ['hero xtreme 160r 4v',     'Xtreme 160'],
+  ['hero xtreme 250r',        'Xtreme 250'],
+]);
+function heroNormLeadModelForTD(raw) {
+  if (!raw) return '';
+  return HERO_TD_MODEL_MAP.get(raw.trim().toLowerCase()) || heroNormTargetModel(raw);
 }
 
 function sheetUrlToCsvUrl(url){
@@ -2856,7 +2888,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       if (!allCity&&(cf  ===FILTER_CLEARED||!cf.has(r.city)))  continue;
       // Normalise AO and model to match target data keys
       const ao    = heroNormTargetAo(r.ao||'');
-      const model = heroNormTargetModel(r.model||'');
+      const model = heroNormLeadModelForTD(r.model||'');
       const key   = ao+'\x00'+model;
       let d = delMap.get(key);
       if (!d){d={l:0,r:0};delMap.set(key,d);}
@@ -2919,19 +2951,26 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         const rawAOs=[...new Set(rawJoined.map(r=>r.ao||''))].sort();
         const rawModels=[...new Set(rawJoined.map(r=>r.model||''))].sort();
         const normAOs=[...new Set(rawJoined.map(r=>heroNormTargetAo(r.ao||'')))].sort();
-        const normModels=[...new Set(rawJoined.map(r=>heroNormTargetModel(r.model||'')))].sort();
+        const normModels=[...new Set(rawJoined.map(r=>heroNormLeadModelForTD(r.model||'')))].sort();
         const targetAOs=Object.keys(HERO_TARGET_DATA).sort();
         const targetModels=[...new Set(Object.values(HERO_TARGET_DATA).flatMap(d=>Object.keys(d.models)))].sort();
         console.log('Raw AOs in lead data:',rawAOs);
-        console.log('Normalised AOs:',normAOs);
+        console.log('Normalised AOs (heroNormTargetAo):',normAOs);
         console.log('Target AO keys:',targetAOs);
         const unmatchedAOs=normAOs.filter(a=>!targetAOs.includes(a));
-        if(unmatchedAOs.length)console.warn('AOs in lead data that do NOT match any target AO:',unmatchedAOs);
-        else console.log('✓ All normalised AOs match target AO keys');
+        const knownUnresolvable=['Lucknow','Patna','Not Available'];
+        const trulyUnmatched=unmatchedAOs.filter(a=>!knownUnresolvable.includes(a));
+        const unresolvable=unmatchedAOs.filter(a=>knownUnresolvable.includes(a));
+        if(trulyUnmatched.length)console.warn('AOs with no target match (unexpected):',trulyUnmatched);
+        else if(!unmatchedAOs.length)console.log('✓ All normalised AOs match target AO keys');
+        if(unresolvable.length){
+          const cnt=rawJoined.filter(r=>unresolvable.includes(heroNormTargetAo(r.ao||''))).length;
+          console.warn('Unresolvable AOs — Lead Master has no sub-AO field to split into target sub-AOs:',unresolvable,'('+cnt+' lead rows unattributed — Lucknow-1/2 and Patna-1/2 require sub-AO data not present in Lead Master)');
+        }
         console.log('Raw models in lead data:',rawModels);
-        console.log('Normalised models:',normModels);
+        console.log('Normalised models (heroNormLeadModelForTD):',normModels);
         const unmatchedModels=normModels.filter(m=>!targetModels.includes(m));
-        if(unmatchedModels.length)console.warn('Models in lead data that do NOT match any target model:',unmatchedModels);
+        if(unmatchedModels.length)console.warn('Models with no target match:',unmatchedModels);
         else console.log('✓ All normalised models match target model keys');
         // Sample rows by quarter
         const qSamples={};
