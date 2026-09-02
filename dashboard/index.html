@@ -3954,6 +3954,30 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
         console.log('9. pivotResult:', pr ? 'tbl empty (size=0)' : 'null');
       }
 
+      // 10. Renderer lookup trace (Model × Month for first model)
+      if (pr && pr.tbl.size > 0 && pr.colLabels && pr.colLabels.length > 0) {
+        const sampleModel = [...pr.tbl.keys()][0];
+        const sampleEntry = pr.tbl.get(sampleModel);
+        const sampleCol   = pr.colLabels[0];
+        const sampleVals  = sampleEntry.sub.get(sampleCol);
+        console.group('10. Renderer lookup trace');
+        console.log('  Model:', sampleModel);
+        console.log('  Col key (month):', sampleCol);
+        console.log('  entry.sub.get(colKey) =', sampleVals, '  [L, R_all, R_dms, R_co]');
+        const MKEYS = ['leads','leadpct','ret','retlpct','retpct','dms','call'];
+        MKEYS.forEach(mk => {
+          const getRetV = (v) => rt==='dms'?v[2]:rt==='co'?v[3]:v[1];
+          const raw = sampleVals ? (mk==='leads'?sampleVals[0]:mk==='ret'?getRetV(sampleVals):mk==='retpct'?(sampleVals[0]>0?getRetV(sampleVals)/sampleVals[0]*100:0):mk==='dms'?sampleVals[2]:mk==='call'?sampleVals[3]:null) : 0;
+          const rendered = sampleVals ? (raw===0||raw===null?'—':(mk==='retpct'?raw.toFixed(1)+'%':String(raw))) : '—';
+          console.log('  metric='+mk+' → raw='+raw+' → rendered='+rendered);
+        });
+        // TOTAL cell lookup
+        let totL=0,totR=0;
+        for (const v of sampleEntry.sub.values()) { totL+=v[0]; totR+=v[1]; }
+        console.log('  TOTAL leads='+totL+', retails='+totR, totL>0?'✓':'⚠ ZERO');
+        console.groupEnd();
+      }
+
       console.log('   Config: rowDims='+rd+', colDims='+cd+', leadsMode='+lm+', RT='+rt);
       console.groupEnd();
       return { rawJoinedCount: rj?rj.length:0, months:months2, modelCount:models3.length, totalLeads:rj?rj.length:0, totalRetails:totalR, pivotTblSize:pr?pr.tbl.size:0 };
@@ -4145,9 +4169,10 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
     exportCsv(aoa, `Hero_Pivot_${Date.now()}.csv`);
   }
 
+  const activeMetrics = METRICS.filter(x => metrics.includes(x.key));
   const hasR2       = rowDims.length > 1;
   const hasC2       = colDims.length > 1;
-  const multiMetric = metrics.length > 1;
+  const multiMetric = activeMetrics.length > 1;
   const allDims     = [...rowDims, ...colDims];
   const unsupported      = new Set(allDims).size < allDims.length;
   const awaitingPipeline = !unsupported && (!rawJoined || rawJoined.length === 0);
@@ -4433,13 +4458,13 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
                       const c1 = ck.slice(ck.indexOf(COL_SEP)+1);
                       const prevC0 = ci>0?orderedCols[ci-1].slice(0,orderedCols[ci-1].indexOf(COL_SEP)):null;
                       const thisC0 = ck.slice(0,ck.indexOf(COL_SEP));
-                      return metrics.map((m,mi) => ce('th',{ key:`bh_${ck}_${m.key}`,
+                      return activeMetrics.map((m,mi) => ce('th',{ key:`bh_${ck}_${m.key}`,
                         style:{padding:'8px 10px',textAlign:'center',fontWeight:700,whiteSpace:'nowrap',color:botTxt,background:botBg,fontSize:12,
                                borderLeft:(mi===0&&(ci===0||thisC0!==prevC0))?'1px solid rgba(255,255,255,.15)':'none'} },
                         m.label));
                     })
                   : orderedCols.flatMap((col, ci) =>
-                      metrics.map((m,mi) => ce('th',{ key:`bh_${col}_${m.key}`,
+                      activeMetrics.map((m,mi) => ce('th',{ key:`bh_${col}_${m.key}`,
                         style:{padding:'8px 10px',textAlign:'center',fontWeight:700,whiteSpace:'nowrap',color:botTxt,background:botBg,fontSize:12,
                                borderLeft:(mi===0&&ci===0)?'none':(mi===0)?'1px solid rgba(255,255,255,.15)':'none'} },
                         m.label))
@@ -4451,10 +4476,10 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
                   onClick:()=>{ setSortBy(col); setSortDir(d=>d==='asc'?'desc':'asc'); }
                 }, col+(sortBy===col?(sortDir==='asc'?' ↑':' ↓'):'')))
             ),
-            metrics.map((m,mi) => ce('th',{ key:`tot_${m.key}`,
+            activeMetrics.map((m,mi) => ce('th',{ key:`tot_${m.key}`,
               style:{padding:'8px 12px',textAlign:'center',fontWeight:700,color:botTxt,background:'#7C2D12',
                      borderLeft:mi===0?'2px solid rgba(255,255,255,.3)':'none',whiteSpace:'nowrap'} },
-              metrics.length>1?m.label:'TOTAL'))
+              activeMetrics.length>1?m.label:'TOTAL'))
           ));
 
           return rows;
@@ -4475,12 +4500,12 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
                 }, hasCh ? (isCol?'▶ ':'▼ ')+label : label),
                 hasR2 && ce('td',{style:{padding:'8px 12px',fontWeight:600,borderRight:'1px solid #E2E8F0',whiteSpace:'nowrap'}}, hasR2?'Subtotal':''),
                 orderedCols.flatMap((ck,ci) =>
-                  metrics.map((m,mi) => ce('td',{ key:`${label}_${ck}_${m.key}`,
+                  activeMetrics.map((m,mi) => ce('td',{ key:`${label}_${ck}_${m.key}`,
                     style:{padding:'7px 12px',textAlign:'right',whiteSpace:'nowrap',
                            borderLeft:(mi===0&&ci===0)?'none':(mi===0)?'1px solid #F1F5F9':'none'} },
                     fmtV(entry.sub.get(ck), m.key)))
                 ),
-                metrics.map((m,mi) => ce('td',{ key:`tot_${label}_${m.key}`,
+                activeMetrics.map((m,mi) => ce('td',{ key:`tot_${label}_${m.key}`,
                   style:{padding:'7px 12px',textAlign:'right',fontWeight:700,background:'#FEF3C7',
                          borderLeft:mi===0?'2px solid #F59E0B':'none',whiteSpace:'nowrap'} },
                   fmtTotal(entry.sub, m.key)))
@@ -4491,12 +4516,12 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
                       ce('td',{style:{padding:'6px 16px 6px 28px',color:'#6B7280',position:'sticky',left:0,zIndex:1,background:'#FFFBEB',borderRight:'1px solid #E2E8F0'}},''),
                       ce('td',{style:{padding:'6px 12px',color:'#374151',fontSize:12,borderRight:'1px solid #E2E8F0',whiteSpace:'nowrap'}},r2Lbl),
                       orderedCols.flatMap((ck,ci) =>
-                        metrics.map((m,mi) => ce('td',{ key:`c2_${r2Lbl}_${ck}_${m.key}`,
+                        activeMetrics.map((m,mi) => ce('td',{ key:`c2_${r2Lbl}_${ck}_${m.key}`,
                           style:{padding:'6px 12px',textAlign:'right',fontSize:12,whiteSpace:'nowrap',
                                  borderLeft:(mi===0&&ci===0)?'none':(mi===0)?'1px solid #F1F5F9':'none'} },
                           fmtV(cMap.get(ck), m.key)))
                       ),
-                      metrics.map((m,mi) => ce('td',{ key:`c2tot_${r2Lbl}_${m.key}`,
+                      activeMetrics.map((m,mi) => ce('td',{ key:`c2tot_${r2Lbl}_${m.key}`,
                         style:{padding:'6px 12px',textAlign:'right',fontWeight:600,fontSize:12,background:'#FEF3C7',
                                borderLeft:mi===0?'2px solid #F59E0B':'none'} },
                         fmtTotal(cMap, m.key)))
@@ -4515,7 +4540,7 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
                       borderRight:'1px solid rgba(255,255,255,.2)' }
             }, '∑ Grand Total'),
             orderedCols.flatMap((ck,ci) =>
-              metrics.map((m,mi) => {
+              activeMetrics.map((m,mi) => {
                 const v = getMetricVal(grandTotals.colVals[ck], m.key);
                 return ce('td',{ key:`gt_${ck}_${m.key}`,
                   style:{padding:'8px 12px',textAlign:'right',fontWeight:700,fontFamily:'DM Mono,monospace',fontSize:12,
@@ -4523,7 +4548,7 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
                   (m.key==='retpct'||m.key==='leadpct'||m.key==='retlpct')?(v>0?v.toFixed(1)+'%':'—'):v===0?'—':Nf(v));
               })
             ),
-            metrics.map((m,mi) => {
+            activeMetrics.map((m,mi) => {
               let t = 0;
               if (m.key==='retpct') t = grandTotals.gl>0?(grandTotals.gr/grandTotals.gl*100):0;
               else if (m.key==='leadpct') t = 100;
