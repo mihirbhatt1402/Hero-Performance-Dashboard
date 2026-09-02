@@ -3731,7 +3731,7 @@ const CityModelTab = React.memo(function CityModelTab({ data, filters, months, R
 const thS = {padding:'7px 10px', textAlign:'right', fontWeight:700, fontSize:10, color:'#7C2D12', background:'#FFF7ED', borderBottom:'2px solid #FDBA74', whiteSpace:'nowrap'};
 const tdS = {padding:'7px 10px', textAlign:'right', fontSize:11, fontFamily:'DM Mono,monospace'};
 
-const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDetailedCsv }) {
+const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDetailedCsv, rawJoined, leadsMode }) {
   const { maps } = data;
   const COL_SEP = '\x00';
 
@@ -3744,6 +3744,9 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
   const [collapsed,  setCollapsed]  = useState(new Set());
   const [addRowOpen, setAddRowOpen] = useState(false);
   const [addColOpen, setAddColOpen] = useState(false);
+
+  // QA ref: always holds the latest state for window.heroPivotQA()
+  const _pivotQARef = useRef({});
 
   const DIMS = [
     { key:'lm',   label:'Month'     },
@@ -3764,71 +3767,19 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
     { key:'call',   label:'Call-Out' },
   ];
 
-  const ALL_MATS = [
-    { key:'sm',   dims:['src','lm']                   },
-    { key:'mm',   dims:['mdl','src','lm']            },
-    { key:'stm',  dims:['st','src','lm']             },
-    { key:'ltm',  dims:['lt','src','lm']             },
-    { key:'mxst', dims:['mdl','st','lm']             },
-    { key:'cm',   dims:['city','lm']                  },
-    { key:'csm',  dims:['city','src','lm']           },
-    { key:'cxm',  dims:['city','mdl','lm']           },
-    { key:'univ', dims:['mdl','src','st','lt','lm'] },
-  ];
 
-  const matConfig = useMemo(() => {
-    const needed = [...rowDims, ...colDims];
-    if (new Set(needed).size < needed.length) return null;
-    const filterDims = [];
-    if (filters.models    && filters.models.size    > 0) filterDims.push('mdl');
-    if (filters.states    && filters.states.size    > 0) filterDims.push('st');
-    if (filters.leadTypes && filters.leadTypes.size > 0) filterDims.push('lt');
-    if (filters.cities    && filters.cities.size    > 0) filterDims.push('city');
-    const allNeeded = [...new Set([...needed, ...filterDims])];
-    let best = null, bestExtra = 99;
-    for (const m of ALL_MATS) {
-      if (!allNeeded.every(d => m.dims.includes(d))) continue;
-      const extra = m.dims.filter(d => !needed.includes(d) && d !== 'lm').length;
-      if (extra < bestExtra || (extra === bestExtra && m.dims.length < (best?.dims.length ?? 99))) {
-        bestExtra = extra; best = m;
-      }
-    }
-    return best;
-  }, [rowDims, colDims, filters]);
-
-  const rawMatrix = useMemo(() => {
-    if (!matConfig) return [];
-    return data[matConfig.key] || [];
-  }, [data, matConfig]);
-
-  const filterSets = useMemo(() => {
-    if (!matConfig) return {};
-    const { dims } = matConfig;
-    const mk = (dim, fSet, arr) => {
-      if (!dims.includes(dim) || !fSet || fSet.size === 0) return null;
-      const s = new Set();
-      (arr || []).forEach((v, i) => { if (fSet.has(v)) s.add(i); });
-      return s.size ? s : null;
-    };
-    const sets = {};
-    const a = mk('lm',  filters.months,    maps.lm);  if (a) sets.lm  = a;
-    const b = mk('src', filters.sources,   maps.src); if (b) sets.src = b;
-    const c = mk('st',  filters.states,    maps.st);  if (c) sets.st  = c;
-    const d = mk('mdl', filters.models,    maps.mdl); if (d) sets.mdl = d;
-    const e = mk('lt',  filters.leadTypes, maps.lt);  if (e) sets.lt  = e;
-    if (dims.includes('city') && filters.cities?.size > 0) {
-      const cs = new Set();
-      (maps.city || []).forEach((v, i) => { if (filters.cities.has(v)) cs.add(i); });
-      if (cs.size) sets.city = cs;
-    }
-    return sets;
-  }, [matConfig, filters, maps]);
+  function getRetVal(vals) {
+    if (!vals) return 0;
+    if (RT === 'dms') return vals[2] || 0;
+    if (RT === 'co')  return vals[3] || 0;
+    return vals[1] || 0;
+  }
 
   function getMetricVal(vals, m) {
     if (!vals) return 0;
     if (m === 'leads')  return vals[0] || 0;
-    if (m === 'ret')    return vals[1] || 0;
-    if (m === 'retpct') return vals[0] > 0 ? (vals[1] / vals[0]) * 100 : 0;
+    if (m === 'ret')    return getRetVal(vals);
+    if (m === 'retpct') return vals[0] > 0 ? (getRetVal(vals) / vals[0]) * 100 : 0;
     if (m === 'dms')    return vals[2] || 0;
     if (m === 'call')   return vals[3] || 0;
     return 0;
@@ -3881,41 +3832,134 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
   }
 
   const pivotResult = useMemo(() => {
-    if (!matConfig || rawMatrix.length === 0) return null;
-    const { dims } = matConfig;
-    const nDims = dims.length;
-    const rPos0 = dims.indexOf(rowDims[0]);
-    const rPos1 = rowDims[1] ? dims.indexOf(rowDims[1]) : -1;
-    const cPos0 = dims.indexOf(colDims[0]);
-    const cPos1 = colDims[1] ? dims.indexOf(colDims[1]) : -1;
-    const lbl   = (dim, idx) => (maps[dim] || [])[idx] ?? '#' + idx;
-    const tbl   = new Map();
-    const colSet = new Set();
-    for (const row of rawMatrix) {
-      let ok = true;
-      for (const [dim, allowed] of Object.entries(filterSets)) {
-        const pos = dims.indexOf(dim);
-        if (pos < 0) continue;
-        if (!allowed.has(row[pos])) { ok = false; break; }
+    if (!rawJoined || rawJoined.length === 0) return null;
+    const { months:mf, sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf } = filters;
+    const allM   = !mf  || mf.size  === 0 || mf  === FILTER_CLEARED;
+    const allS   = !sf  || sf.size  === 0 || sf  === FILTER_CLEARED;
+    const allLT  = !ltf || ltf.size === 0 || ltf === FILTER_CLEARED;
+    const allMdl = !mdf || mdf.size === 0 || mdf === FILTER_CLEARED;
+    const allSt  = !stf || stf.size === 0 || stf === FILTER_CLEARED;
+    const allC   = !cf  || cf.size  === 0 || cf  === FILTER_CLEARED;
+    const getDimVal = (dim, r, effMonth) => {
+      switch(dim) {
+        case 'mdl':  return r.model   || 'Unknown';
+        case 'src':  return r.source  || 'Unknown';
+        case 'lm':   return effMonth  || 'Unknown';
+        case 'st':   return r.state   || 'Unknown';
+        case 'lt':   return r.lt      || 'Unknown';
+        case 'city': return r.city    || 'Unknown';
+        default:     return '?';
       }
-      if (!ok) continue;
-      const r1 = lbl(rowDims[0], row[rPos0]);
-      const r2 = rPos1 >= 0 ? lbl(rowDims[1], row[rPos1]) : null;
-      const c0 = lbl(colDims[0], row[cPos0]);
-      const ck = cPos1 >= 0 ? c0 + COL_SEP + lbl(colDims[1], row[cPos1]) : c0;
+    };
+    const tbl    = new Map();
+    const colSet = new Set();
+    for (const r of rawJoined) {
+      const effMonth = (leadsMode === 'update' && r.isBooked && r.booking_month) ? r.booking_month : r.lead_month;
+      if (!allM   && !mf.has(effMonth))   continue;
+      if (!allS   && !sf.has(r.source))   continue;
+      if (!allLT  && !ltf.has(r.lt))      continue;
+      if (!allMdl && !mdf.has(r.model))   continue;
+      if (!allSt  && !stf.has(r.state))   continue;
+      if (!allC   && !cf.has(r.city))     continue;
+      const L  = 1;
+      const R  = isRetailedLead(r) ? 1 : 0;
+      const Rd = (R && r.callType === 'dms') ? 1 : 0;
+      const Rc = (R && r.callType === 'co')  ? 1 : 0;
+      const r1 = getDimVal(rowDims[0], r, effMonth);
+      const r2 = rowDims[1] ? getDimVal(rowDims[1], r, effMonth) : null;
+      const c0 = getDimVal(colDims[0], r, effMonth);
+      const ck = colDims[1] ? c0 + COL_SEP + getDimVal(colDims[1], r, effMonth) : c0;
       colSet.add(ck);
       if (!tbl.has(r1)) tbl.set(r1, { sub: new Map(), children: new Map() });
       const e = tbl.get(r1);
-      accVals(e.sub, ck, row, nDims);
+      if (!e.sub.has(ck)) e.sub.set(ck, [0, 0, 0, 0]);
+      const sv = e.sub.get(ck); sv[0]+=L; sv[1]+=R; sv[2]+=Rd; sv[3]+=Rc;
       if (r2 !== null) {
         if (!e.children.has(r2)) e.children.set(r2, new Map());
-        accVals(e.children.get(r2), ck, row, nDims);
+        const cm = e.children.get(r2);
+        if (!cm.has(ck)) cm.set(ck, [0, 0, 0, 0]);
+        const cv = cm.get(ck); cv[0]+=L; cv[1]+=R; cv[2]+=Rd; cv[3]+=Rc;
       }
     }
     return { tbl, colLabels: [...colSet] };
-  }, [rawMatrix, matConfig, rowDims, colDims, filterSets, maps]);
+  }, [rawJoined, rowDims, colDims, filters, leadsMode]);
 
   const pm = metrics[0] || 'leads';
+
+  // Keep QA ref current every render (useRef is mutable — no deps list needed)
+  _pivotQARef.current = { rawJoined, pivotResult, rowDims, colDims, filters, leadsMode, RT };
+
+  useEffect(() => {
+    window.heroPivotQA = function() {
+      const q = _pivotQARef.current;
+      const { rawJoined: rj, pivotResult: pr, rowDims: rd, colDims: cd, filters: f, leadsMode: lm, RT: rt } = q;
+      console.group('[HERO PIVOT QA]');
+
+      // 1. Records available
+      console.log('1. rawJoined records available to Pivot:', rj ? rj.length : 'null/undefined');
+
+      // 2. Available months
+      const months2 = rj ? [...new Set(rj.map(r => (lm==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month))].filter(Boolean).sort((a,b)=>heroMonthOrder(a)-heroMonthOrder(b)) : [];
+      console.log('2. Available months:', months2);
+
+      // 3. Available models
+      const models3 = rj ? [...new Set(rj.map(r=>r.model||'Unknown'))].sort() : [];
+      console.log('3. Available models (' + models3.length + '):', models3.slice(0,10), models3.length>10?'...(first 10 shown)':'');
+
+      // 4. Total leads
+      console.log('4. Total leads in rawJoined:', rj ? rj.length : 0);
+
+      // 5. Total retails
+      const totalR = rj ? rj.filter(r=>isRetailedLead(r)).length : 0;
+      console.log('5. Total retails (isRetailedLead):', totalR);
+
+      // 6. Sample Model × Month lead aggregation
+      if (rj && rj.length) {
+        const sampleAgg = new Map();
+        rj.slice(0, 1000).forEach(r => {
+          const effM = (lm==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month;
+          const k = (r.model||'Unknown') + '|' + (effM||'Unknown');
+          sampleAgg.set(k, (sampleAgg.get(k)||0) + 1);
+        });
+        const top3 = [...sampleAgg.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3);
+        console.log('6. Sample Model×Month lead aggregation (from first 1000 rows):', top3.map(([k,v])=>k+'='+v).join(', '));
+      }
+
+      // 7. Sample Model × Month retail aggregation
+      if (rj && rj.length) {
+        const retAgg = new Map();
+        rj.filter(r=>isRetailedLead(r)).slice(0,200).forEach(r => {
+          const effM = (lm==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month;
+          const k = (r.model||'Unknown') + '|' + (effM||'Unknown');
+          retAgg.set(k, (retAgg.get(k)||0) + 1);
+        });
+        const top3r = [...retAgg.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3);
+        console.log('7. Sample Model×Month retail aggregation (from first 200 retails):', top3r.map(([k,v])=>k+'='+v).join(', ') || '(none)');
+      }
+
+      // 8. Missing/undefined fields
+      if (rj && rj.length) {
+        const s = rj[0];
+        const missing = ['model','source','lead_month','lt','state','city'].filter(fld => s[fld]===undefined);
+        console.log('8. Fields undefined in first row:', missing.length ? missing : 'none');
+        console.log('   First row sample:', {model:s.model,source:s.source,lead_month:s.lead_month,lt:s.lt,state:s.state,isBooked:s.isBooked,booking_month:s.booking_month});
+      }
+
+      // 9. Pivot config non-zero check
+      if (pr && pr.tbl.size > 0) {
+        let accL = 0, accR = 0;
+        for (const {sub} of pr.tbl.values()) for (const v of sub.values()) { accL+=v[0]; accR+=v[1]; }
+        console.log('9. Current pivot config: tbl rows='+pr.tbl.size+', accumulated leads='+accL+', retails='+accR, accL>0?'✓ NON-ZERO':'⚠ ALL ZERO');
+      } else {
+        console.log('9. pivotResult:', pr ? 'tbl empty (size=0)' : 'null');
+      }
+
+      console.log('   Config: rowDims='+rd+', colDims='+cd+', leadsMode='+lm+', RT='+rt);
+      console.groupEnd();
+      return { rawJoinedCount: rj?rj.length:0, months:months2, modelCount:models3.length, totalLeads:rj?rj.length:0, totalRetails:totalR, pivotTblSize:pr?pr.tbl.size:0 };
+    };
+    return () => { delete window.heroPivotQA; };
+  }, []);
 
   const orderedCols = useMemo(() => {
     if (!pivotResult) return [];
@@ -4012,16 +4056,7 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
     return { colVals, gl, gr };
   }, [pivotResult]);
 
-  const unapplied = useMemo(() => {
-    if (!matConfig) return [];
-    const ds  = new Set(matConfig.dims);
-    const all = new Set([...rowDims, ...colDims]);
-    const out = [];
-    if (filters.sources?.size > 0 && !ds.has('src') && !all.has('src')) out.push('Source');
-    if (filters.states?.size  > 0 && !ds.has('st')  && !all.has('st'))  out.push('State');
-    if (filters.models?.size  > 0 && !ds.has('mdl') && !all.has('mdl')) out.push('Model');
-    return out;
-  }, [matConfig, filters, rowDims, colDims]);
+  const unapplied = [];
 
   function toggleMetric(key) {
     setMetrics(prev =>
@@ -4114,8 +4149,8 @@ const PivotTab = React.memo(function PivotTab({ data, filters, months, RT, onDet
   const hasC2       = colDims.length > 1;
   const multiMetric = metrics.length > 1;
   const allDims     = [...rowDims, ...colDims];
-  const unsupported      = new Set(allDims).size < allDims.length || !matConfig;
-  const awaitingPipeline = !unsupported && !(data[matConfig?.key]);
+  const unsupported      = new Set(allDims).size < allDims.length;
+  const awaitingPipeline = !unsupported && (!rawJoined || rawJoined.length === 0);
   const noData           = !unsupported && !awaitingPipeline && (!pivotResult || pivotResult.tbl.size === 0);
 
   const selSt = { padding:'6px 10px', fontSize:13, border:'1px solid #CBD5E1', borderRadius:8,
@@ -4825,7 +4860,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       case 'geodealer':       return ce(GeoAndDealerTab,      {...props,rawJoined,leadsMode});
       case 'targetdelivery':  return ce(TargetDeliveryTab,   {data:effectiveData,filters,RT,rawJoined,leadsMode,viewerMode});
       case 'dispersion':      return ce(DispersionTab,       props);
-      case 'pivot':       return ce(PivotTab,         props);
+      case 'pivot':       return ce(PivotTab,         {...props,rawJoined,leadsMode});
       default: return null;
     }
   },[tab,effectiveData,filters,months,RT,viewerMode,onDetailedCsv,rawJoined,leadsMode]);
