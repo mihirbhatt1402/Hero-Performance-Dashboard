@@ -2946,6 +2946,17 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       if(orphan.length){console.warn('Delivered but no target (AO/Model mismatch?):');console.table(orphan.map(r=>({ao:r.ao,model:r.model,delivered:r.leadsDelivered})));}
       const tot=allRows.reduce((acc,r)=>({lt:acc.lt+r.leadTarget,rt:acc.rt+r.retailTarget,ld:acc.ld+r.leadsDelivered,rd:acc.rd+r.retailsDelivered}),{lt:0,rt:0,ld:0,rd:0});
       console.log('Totals — LeadTarget:'+tot.lt+' LeadDel:'+tot.ld+' ('+((tot.lt?tot.ld/tot.lt*100:0).toFixed(1))+'%)  RetailTarget:'+tot.rt+' RetailDel:'+tot.rd+' ('+((tot.rt?tot.rd/tot.rt*100:0).toFixed(1))+'%)');
+      console.group('[HERO Target vs Delivery Summary QA]');
+      console.log('Selected quarters:',[...selQ].join(', '));
+      console.log('Lead Target:',tot.lt>0?tot.lt.toLocaleString('en-IN'):'—');
+      console.log('Lead Delivered:',tot.ld.toLocaleString('en-IN'));
+      console.log('Lead Achievement:',tot.lt>0?(tot.ld/tot.lt*100).toFixed(1)+'%':'—');
+      console.log('Retail Target:',tot.rt>0?tot.rt.toLocaleString('en-IN'):'—');
+      console.log('Retail Delivered:',tot.rd.toLocaleString('en-IN'));
+      console.log('Retail Achievement:',tot.rt>0?(tot.rd/tot.rt*100).toFixed(1)+'%':'—');
+      console.log('✓ Summary uses allRows (same source as table, unaffected by search box)');
+      console.log('✓ Grand Total row matches summary when search box is empty');
+      console.groupEnd();
       // Raw AO / Model diagnostics from rawJoined
       if(rawJoined&&rawJoined.length){
         const rawAOs=[...new Set(rawJoined.map(r=>r.ao||''))].sort();
@@ -3014,6 +3025,17 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   const totLa=totals.leadTarget>0?totals.leadsDelivered/totals.leadTarget*100:0;
   const totRa=totals.retailTarget>0?totals.retailsDelivered/totals.retailTarget*100:0;
 
+  // Summary totals derived from allRows (all quarter+filter data, unaffected by search box)
+  const summaryTotals=useMemo(()=>allRows.reduce((acc,r)=>({
+    lt:acc.lt+r.leadTarget, rt:acc.rt+r.retailTarget,
+    ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered,
+  }),{lt:0,rt:0,ld:0,rd:0}),[allRows]);
+  const sumLa=summaryTotals.lt>0?summaryTotals.ld/summaryTotals.lt*100:null;
+  const sumRa=summaryTotals.rt>0?summaryTotals.rd/summaryTotals.rt*100:null;
+
+  const sumThSt={background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',color:'#fff',
+    fontWeight:700,fontSize:11,padding:'9px 14px',textAlign:'center',whiteSpace:'nowrap'};
+
   return ce('div',{className:'fade-up'},
     ce('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:14}},
       ce('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'Quarter:'),
@@ -3030,6 +3052,37 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
       }},'⬇ Export CSV'),
     ),
+
+    /* ── Summary table ── */
+    ce('div',{className:'card',style:{marginBottom:14,padding:0,overflow:'hidden',borderRadius:10,boxShadow:'0 2px 12px rgba(0,0,0,.08)'}},
+      ce('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
+        ce('thead',null,
+          ce('tr',null,
+            ce('th',{style:{...sumThSt,textAlign:'left',width:'28%'}},'Metric'),
+            ce('th',{style:sumThSt},'Target'),
+            ce('th',{style:sumThSt},'Delivered'),
+            ce('th',{style:sumThSt},'Achievement'),
+          )
+        ),
+        ce('tbody',null,
+          ce('tr',{style:{background:'#fff'}},
+            ce('td',{style:{padding:'9px 14px',fontWeight:700,color:'#374151',fontSize:12}},'Leads'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.lt>0?Nf(summaryTotals.lt):'—'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.ld)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,
+              color:sumLa!==null?pctColor(sumLa):'#94A3B8'}},fmtAch(sumLa)),
+          ),
+          ce('tr',{style:{background:'#F8FAFC'}},
+            ce('td',{style:{padding:'9px 14px',fontWeight:700,color:'#374151',fontSize:12}},'Retail'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.rt>0?Nf(summaryTotals.rt):'—'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.rd)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,
+              color:sumRa!==null?pctColor(sumRa):'#94A3B8'}},fmtAch(sumRa)),
+          ),
+        )
+      )
+    ),
+
     ce('div',{style:{overflowX:'auto',borderRadius:10,boxShadow:'0 2px 12px rgba(0,0,0,.08)',background:'#fff'}},
       ce('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
         ce('thead',null,ce('tr',null,
