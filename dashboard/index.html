@@ -2605,7 +2605,7 @@ const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, month
     );
   }, [mm, univ, maps, filters, getLR]);
 
-  return ce(MonthlyGrids, { title:'Model × Source', months, renderAgg, srcGroups, dimLabel:'Model', expandedGrps, onToggleGrp, viewerMode, onDetailedCsv });
+  return ce(MonthlyGrids, { title:'Model Performance', months, renderAgg, srcGroups, dimLabel:'Model', expandedGrps, onToggleGrp, viewerMode, onDetailedCsv });
 });
 
 /* ════════════════════════════════════════════════════════════════════
@@ -4635,8 +4635,8 @@ const TABS = [
   { id:'source',          label:'Source Analysis' },
   { id:'webid',           label:'Web ID' },
   { id:'ltxsrc',          label:'LT \u00d7 Source' },
-  { id:'modelxsrc',       label:'Model \u00d7 Source' },
-  { id:'statexsrc',       label:'State \u00d7 Source' },
+  { id:'modelxsrc',       label:'Model Performance' },
+  { id:'statexsrc',       label:'State Performance' },
   { id:'geodealer',       label:'Geo & Dealer' },
   { id:'targetdelivery',  label:'Target vs Delivery' },
   { id:'dispersion',      label:'Retail Dispersion' },
