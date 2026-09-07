@@ -925,6 +925,12 @@ function buildPayload(joinedRows){
 
   // normMdl: normalise model name for SAME vs CROSS comparison
   function normMdl(s){return(s||'').toLowerCase().replace(/^hero\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();}
+  // Purchased-model equivalences: these retailed models count as SAME as the mapped canonical norm
+  const HERO_SAME_MDL_EQUIV = {
+    'splendor plus xtec': 'super splendor xtec',
+    'xpulse 200 4v':      'xpulse 210',
+  };
+  function normForSame(n){ return HERO_SAME_MDL_EQUIV[n] || n; }
 
   // a4: accumulate [L, R_all, R_dms, R_co]
   function a4(m,k,L,Ra,Rd,Rc){const e=m.get(k);if(e){e[0]+=L;e[1]+=Ra;e[2]+=Rd;e[3]+=Rc;}else m.set(k,[L,Ra,Rd,Rc]);}
@@ -1001,7 +1007,7 @@ function buildPayload(joinedRows){
       const purN=normMdl(r.purchasedModel);
       // Only include if purchased model is known
       if(purN){
-        const isSame=(enqN===purN)?1:0;
+        const isSame=(normForSame(enqN)===normForSame(purN))?1:0;
         const Ra2=1,Rd2=(r.callType==='dms')?1:0,Rc2=(r.callType==='co')?1:0;
         a4(rdmA,mi+'|'+isSame+'|'+si+'|'+sti+'|'+ci+'|'+lti+'|'+li,Ra2,Rd2,Rc2,0);
         // Drill-down: also accumulate with purchased model dimension
