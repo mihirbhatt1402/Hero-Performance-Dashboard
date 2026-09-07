@@ -3001,6 +3001,33 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         unmatchedModels=normModels.filter(m=>m&&!targetModels.includes(m));
       }
 
+      // ── DOM-level inspection ────────────────────────────────────────────
+      const table = document.getElementById('td-detail-table');
+      let domQA;
+      if (table) {
+        const zoneTds  = table.querySelectorAll('td[data-role="zone"]');
+        const aoTds    = table.querySelectorAll('td[data-role="ao"]');
+        const allTrs   = table.querySelectorAll('tbody tr');
+        const modelRowCount = allTrs.length - 1; // subtract grand-total row
+        const zoneSpanSum = [...zoneTds].reduce((s,td)=>s+td.rowSpan,0);
+        const aoSpanSum   = [...aoTds].reduce((s,td)=>s+td.rowSpan,0);
+        domQA = {
+          tableMounted: true,
+          zoneCellsRendered: zoneTds.length,
+          aoCellsRendered:   aoTds.length,
+          modelRowsRendered: modelRowCount,
+          zoneSpanSumEqualsModelRows: zoneSpanSum === modelRowCount,
+          aoSpanSumEqualsModelRows:   aoSpanSum   === modelRowCount,
+          QA_ZoneCells_is5:     zoneTds.length === 5,
+          QA_AoCells_is30:      aoTds.length === 30,
+          QA_ModelRows_is330:   modelRowCount === 330,
+          zoneDetails: [...zoneTds].map(td=>({name:td.textContent.trim(), rowSpan:td.rowSpan})),
+          aoDetails:   [...aoTds].map(td=>({name:td.textContent.trim(), rowSpan:td.rowSpan})),
+        };
+      } else {
+        domQA = { tableMounted: false, error: '#td-detail-table not in DOM — is the Target vs Delivery tab active?' };
+      }
+
       const result = {
         selectedMonth: selM ? selM.join(', ') : 'All (Aug–Mar)',
         totalDetailRows: totalModelCount,
@@ -3026,6 +3053,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         unmatchedModels,
         zeroTargetRows: zeroTgtRows,
         hierarchyZones: groupedRows.map(z=>({zone:z.zone,aoCt:z.aos.length,modelCt:z.aos.reduce((s,a)=>s+a.models.length,0)})),
+        domQA,
       };
       console.group('[HERO Target vs Delivery QA]');
       console.log('Month:', result.selectedMonth);
@@ -3041,6 +3069,19 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       else console.log('✓ All models matched');
       console.log('Zero-target rows:', zeroTgtRows);
       console.log('Hierarchy zones:', result.hierarchyZones);
+      console.group('[DOM QA]');
+      if(domQA.tableMounted) {
+        console.log('Zone cells rendered:', domQA.zoneCellsRendered, domQA.QA_ZoneCells_is5?'✓':'✗ EXPECTED 5');
+        console.log('AO cells rendered:', domQA.aoCellsRendered, domQA.QA_AoCells_is30?'✓':'✗ EXPECTED 30');
+        console.log('Model rows rendered:', domQA.modelRowsRendered, domQA.QA_ModelRows_is330?'✓':'✗ EXPECTED 330');
+        console.log('Zone rowSpan sum = model rows:', domQA.zoneSpanSumEqualsModelRows?'✓':'✗');
+        console.log('AO rowSpan sum = model rows:', domQA.aoSpanSumEqualsModelRows?'✓':'✗');
+        console.log('Zone details:', domQA.zoneDetails);
+        console.log('AO details (first 5):', domQA.aoDetails.slice(0,5));
+      } else {
+        console.warn('DOM QA skipped:', domQA.error);
+      }
+      console.groupEnd();
       console.groupEnd();
       return result;
     };
@@ -3080,79 +3121,95 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     textAlign:'center', whiteSpace:'nowrap',
   };
 
-  // Pre-flatten groupedRows into one descriptor per rendered table row.
-  // Each descriptor explicitly records whether Zone/AO cells must be emitted
-  // (isFirstZone / isFirstAo) and their rowSpan values.
-  // Rendering then becomes a trivial loop with no mutable flags.
+  // Pre-flatten groupedRows: one descriptor per rendered <tr>.
+  // isFirstZone uses AO index (ai===0) and model index (mi===0) — no mutable flag.
+  // isFirstAo uses model index (mi===0) only.
   const flatRows = useMemo(() => {
     const result = [];
     for (const zd of groupedRows) {
-      // Total model rows that the Zone cell must span
       const zoneRowSpan = zd.aos.reduce((s, ad) => s + ad.models.length, 0);
-      let zoneEmitted = false; // becomes true after the first row of this zone
-      for (const ad of zd.aos) {
+      for (let ai = 0; ai < zd.aos.length; ai++) {
+        const ad = zd.aos[ai];
         const aoRowSpan = ad.models.length;
         for (let mi = 0; mi < ad.models.length; mi++) {
           const r = ad.models[mi];
+          const isFirstZone = (ai === 0 && mi === 0);
           const isFirstAo   = (mi === 0);
-          const isFirstZone = (!zoneEmitted && mi === 0);
+          const isLastOfAo  = (mi === ad.models.length - 1);
+          const isLastOfZone= (ai === zd.aos.length - 1 && mi === ad.models.length - 1);
           result.push({
-            zone: zd.zone,  ao: ad.ao,
-            model: r.model,
+            zone: zd.zone, ao: ad.ao, model: r.model,
             leadTarget: r.leadTarget,   retailTarget: r.retailTarget,
             leadsDelivered: r.leadsDelivered, retailsDelivered: r.retailsDelivered,
             leadAch: r.leadAch,         retailAch: r.retailAch,
             isFirstZone, zoneRowSpan: isFirstZone ? zoneRowSpan : 0,
             isFirstAo,   aoRowSpan:   isFirstAo   ? aoRowSpan   : 0,
+            isLastOfAo, isLastOfZone,
           });
-          if (isFirstZone) zoneEmitted = true;
         }
       }
     }
     return result;
   }, [groupedRows]);
 
-  // Render the pre-flattened rows: emit Zone <td> only on isFirstZone,
-  // AO <td> only on isFirstAo, then model + 6 metric cells every row.
+  // Render flatRows: Zone <td> only on isFirstZone (rowSpan=zoneRowSpan),
+  // AO <td> only on isFirstAo (rowSpan=aoRowSpan), then Model + 6 metric cells every row.
   const buildBodyRows = () => {
     const rows = [];
     for (let ri = 0; ri < flatRows.length; ri++) {
       const fd = flatRows[ri];
-      const bg = ri % 2 === 0 ? '#fff' : '#F8FAFC';
+      // Bottom border: thick at zone boundary, medium at AO boundary, thin otherwise
+      const rowBdr = fd.isLastOfZone ? '2px solid #93C5FD'
+                   : fd.isLastOfAo   ? '1px solid #BFDBFE'
+                   : '1px solid #F1F5F9';
+      const metricBg = ri % 2 === 0 ? '#fff' : '#F8FAFC';
       const cells = [];
 
       if (fd.isFirstZone) {
-        cells.push(ce('td', {key:'z', rowSpan:fd.zoneRowSpan, style:{
-          padding:'6px 10px', fontWeight:700, fontSize:11,
-          color:'#1E3A8A', background:'#EFF6FF',
-          borderRight:'2px solid #BFDBFE', verticalAlign:'top',
-          whiteSpace:'nowrap',
-        }}, fd.zone));
+        cells.push(ce('td', {
+          key:'z', rowSpan: fd.zoneRowSpan, 'data-role':'zone',
+          style:{
+            padding:'6px 10px', fontWeight:700, fontSize:11,
+            color:'#1E3A8A', background:'#EFF6FF',
+            borderRight:'2px solid #93C5FD', borderBottom:'2px solid #93C5FD',
+            verticalAlign:'middle', whiteSpace:'nowrap',
+          },
+        }, fd.zone));
       }
 
       if (fd.isFirstAo) {
-        cells.push(ce('td', {key:'a', rowSpan:fd.aoRowSpan, style:{
-          padding:'6px 10px', fontSize:11, fontWeight:600,
-          color:'#1E40AF', background:'#F0F9FF',
-          borderRight:'1px solid #DBEAFE', verticalAlign:'top',
-          whiteSpace:'nowrap',
-        }}, fd.ao));
+        cells.push(ce('td', {
+          key:'a', rowSpan: fd.aoRowSpan, 'data-role':'ao',
+          style:{
+            padding:'6px 10px', fontSize:11, fontWeight:600,
+            color:'#1E40AF', background:'#F0F9FF',
+            borderRight:'1px solid #BFDBFE', borderBottom:'1px solid #BFDBFE',
+            verticalAlign:'middle', whiteSpace:'nowrap',
+          },
+        }, fd.ao));
       }
 
       cells.push(
-        ce('td',{key:'m', style:{padding:'5px 8px',fontSize:11,whiteSpace:'nowrap',borderLeft:'1px solid #F1F5F9'}},fd.model),
-        ce('td',{key:'lt',style:{padding:'5px 8px',textAlign:'center',fontSize:11}},fmtTgt(fd.leadTarget)),
-        ce('td',{key:'rt',style:{padding:'5px 8px',textAlign:'center',fontSize:11}},fmtTgt(fd.retailTarget)),
-        ce('td',{key:'ld',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:fd.leadsDelivered>0?600:400}},Nf(fd.leadsDelivered)),
-        ce('td',{key:'rd',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:fd.retailsDelivered>0?600:400}},Nf(fd.retailsDelivered)),
-        ce('td',{key:'la',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:fd.leadAch!==null?pctColor(fd.leadAch):'#94A3B8'}},fmtAch(fd.leadAch)),
-        ce('td',{key:'ra',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:fd.retailAch!==null?pctColor(fd.retailAch):'#94A3B8'}},fmtAch(fd.retailAch)),
+        ce('td',{key:'m', style:{padding:'5px 8px',fontSize:11,whiteSpace:'nowrap',
+          borderLeft:'1px solid #F1F5F9',borderBottom:rowBdr,background:metricBg}}, fd.model),
+        ce('td',{key:'lt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+          borderBottom:rowBdr,background:metricBg}}, fmtTgt(fd.leadTarget)),
+        ce('td',{key:'rt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+          borderBottom:rowBdr,background:metricBg}}, fmtTgt(fd.retailTarget)),
+        ce('td',{key:'ld',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+          fontWeight:fd.leadsDelivered>0?600:400,borderBottom:rowBdr,background:metricBg}}, Nf(fd.leadsDelivered)),
+        ce('td',{key:'rd',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+          fontWeight:fd.retailsDelivered>0?600:400,borderBottom:rowBdr,background:metricBg}}, Nf(fd.retailsDelivered)),
+        ce('td',{key:'la',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+          color:fd.leadAch!==null?pctColor(fd.leadAch):'#94A3B8',borderBottom:rowBdr,background:metricBg}}, fmtAch(fd.leadAch)),
+        ce('td',{key:'ra',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+          color:fd.retailAch!==null?pctColor(fd.retailAch):'#94A3B8',borderBottom:rowBdr,background:metricBg}}, fmtAch(fd.retailAch)),
       );
 
-      rows.push(ce('tr',{key:'r'+ri,style:{background:bg,borderBottom:'1px solid #F1F5F9'}},...cells));
+      rows.push(ce('tr', {key:'r'+ri}, ...cells));
     }
 
-    // Grand total row spanning all 9 columns
+    // Grand total row
     const gtLa = grandTotals.lt>0 ? grandTotals.ld/grandTotals.lt*100 : null;
     const gtRa = grandTotals.rt>0 ? grandTotals.rd/grandTotals.rt*100 : null;
     rows.push(ce('tr',{key:'grand',style:{background:'#1e293b',color:'#fff',fontWeight:700,fontSize:11}},
@@ -3225,7 +3282,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     // Detail grid: flat 9-column table, Zone→AO→Model, no accordion
     ce('div',{style:{overflowX:'auto',borderRadius:10,
       boxShadow:'0 2px 12px rgba(0,0,0,.08)',background:'#fff'}},
-      ce('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto'}},
+      ce('table',{id:'td-detail-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto'}},
         ce('thead',null,ce('tr',null,
           ce('th',{style:{...thSt,textAlign:'left',minWidth:80}},'Zone'),
           ce('th',{style:{...thSt,textAlign:'left',minWidth:100}},'AO'),
