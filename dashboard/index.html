@@ -2858,13 +2858,15 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
 
 /* ════════════════════════════════════════════════════════════════════
    TARGET VS DELIVERY TAB
-   Flat table: Zone → AO → Model, all rows always visible (no accordion).
+   Accordion: Zone rows expand → AO rows expand → Model rows.
    Columns: ZONE | AO | MODEL | LEAD TARGET | RETAIL TARGET |
             LEADS DELIVERED | RETAILS DELIVERED | LEAD ACHIEVEMENT | RETAIL ACHIEVEMENT
    Monthly targets: Q2÷2 (Aug/Sep), Q3÷3 (Oct/Nov/Dec), Q4÷3 (Jan/Feb/Mar).
    ════════════════════════════════════════════════════════════════════ */
 const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters, RT, rawJoined, leadsMode, viewerMode }) {
   const [search, setSearch] = React.useState('');
+  const [expandedZones, setExpandedZones] = useState(new Set());
+  const [expandedAos,   setExpandedAos]   = useState(new Set());
 
   // Aggregate deliveries from rawJoined, then build per-(AO×Model) target+delivery rows.
   const allRows = useMemo(() => {
@@ -3005,24 +3007,16 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       const table = document.getElementById('td-detail-table');
       let domQA;
       if (table) {
-        const zoneTds  = table.querySelectorAll('td[data-role="zone"]');
-        const aoTds    = table.querySelectorAll('td[data-role="ao"]');
-        const allTrs   = table.querySelectorAll('tbody tr');
-        const modelRowCount = allTrs.length - 1; // subtract grand-total row
-        const zoneSpanSum = [...zoneTds].reduce((s,td)=>s+td.rowSpan,0);
-        const aoSpanSum   = [...aoTds].reduce((s,td)=>s+td.rowSpan,0);
+        const zoneTrs  = table.querySelectorAll('tr[data-role="zone-row"]');
+        const aoTrs    = table.querySelectorAll('tr[data-role="ao-row"]');
+        const modelTrs = table.querySelectorAll('tr[data-role="model-row"]');
         domQA = {
           tableMounted: true,
-          zoneCellsRendered: zoneTds.length,
-          aoCellsRendered:   aoTds.length,
-          modelRowsRendered: modelRowCount,
-          zoneSpanSumEqualsModelRows: zoneSpanSum === modelRowCount,
-          aoSpanSumEqualsModelRows:   aoSpanSum   === modelRowCount,
-          QA_ZoneCells_is5:     zoneTds.length === 5,
-          QA_AoCells_is30:      aoTds.length === 30,
-          QA_ModelRows_is330:   modelRowCount === 330,
-          zoneDetails: [...zoneTds].map(td=>({name:td.textContent.trim(), rowSpan:td.rowSpan})),
-          aoDetails:   [...aoTds].map(td=>({name:td.textContent.trim(), rowSpan:td.rowSpan})),
+          zoneRowsRendered:  zoneTrs.length,
+          aoRowsRendered:    aoTrs.length,
+          modelRowsRendered: modelTrs.length,
+          QA_ZoneRows_is5:  zoneTrs.length === groupedRows.length,
+          zoneDetails: [...zoneTrs].map(tr=>tr.cells[0]&&tr.cells[0].textContent.trim()),
         };
       } else {
         domQA = { tableMounted: false, error: '#td-detail-table not in DOM — is the Target vs Delivery tab active?' };
@@ -3071,13 +3065,10 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       console.log('Hierarchy zones:', result.hierarchyZones);
       console.group('[DOM QA]');
       if(domQA.tableMounted) {
-        console.log('Zone cells rendered:', domQA.zoneCellsRendered, domQA.QA_ZoneCells_is5?'✓':'✗ EXPECTED 5');
-        console.log('AO cells rendered:', domQA.aoCellsRendered, domQA.QA_AoCells_is30?'✓':'✗ EXPECTED 30');
-        console.log('Model rows rendered:', domQA.modelRowsRendered, domQA.QA_ModelRows_is330?'✓':'✗ EXPECTED 330');
-        console.log('Zone rowSpan sum = model rows:', domQA.zoneSpanSumEqualsModelRows?'✓':'✗');
-        console.log('AO rowSpan sum = model rows:', domQA.aoSpanSumEqualsModelRows?'✓':'✗');
+        console.log('Zone rows rendered:', domQA.zoneRowsRendered, domQA.QA_ZoneRows_is5?'✓':'✗ EXPECTED '+groupedRows.length);
+        console.log('AO rows rendered:', domQA.aoRowsRendered, '(expand zones to see AO rows)');
+        console.log('Model rows rendered:', domQA.modelRowsRendered, '(expand zones+AOs to see model rows)');
         console.log('Zone details:', domQA.zoneDetails);
-        console.log('AO details (first 5):', domQA.aoDetails.slice(0,5));
       } else {
         console.warn('DOM QA skipped:', domQA.error);
       }
@@ -3085,7 +3076,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       console.groupEnd();
       return result;
     };
-  }, [allRows, summaryTotals, grandTotals, groupedRows, filters, rawJoined, totalModelCount]);
+  }, [allRows, summaryTotals, grandTotals, groupedRows, filters, rawJoined, totalModelCount, expandedZones, expandedAos]);
 
   const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
   // target=0 → '—'; target>0, delivery=0 → '0' (not —)
@@ -3121,92 +3112,136 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     textAlign:'center', whiteSpace:'nowrap',
   };
 
-  // Pre-flatten groupedRows: one descriptor per rendered <tr>.
-  // isFirstZone uses AO index (ai===0) and model index (mi===0) — no mutable flag.
-  // isFirstAo uses model index (mi===0) only.
-  const flatRows = useMemo(() => {
-    const result = [];
+  // Aggregate zone summaries for accordion Zone rows
+  const zoneSummaries = useMemo(() => {
+    const m = new Map();
     for (const zd of groupedRows) {
-      const zoneRowSpan = zd.aos.reduce((s, ad) => s + ad.models.length, 0);
-      for (let ai = 0; ai < zd.aos.length; ai++) {
-        const ad = zd.aos[ai];
-        const aoRowSpan = ad.models.length;
-        for (let mi = 0; mi < ad.models.length; mi++) {
-          const r = ad.models[mi];
-          const isFirstZone = (ai === 0 && mi === 0);
-          const isFirstAo   = (mi === 0);
-          const isLastOfAo  = (mi === ad.models.length - 1);
-          const isLastOfZone= (ai === zd.aos.length - 1 && mi === ad.models.length - 1);
-          result.push({
-            zone: zd.zone, ao: ad.ao, model: r.model,
-            leadTarget: r.leadTarget,   retailTarget: r.retailTarget,
-            leadsDelivered: r.leadsDelivered, retailsDelivered: r.retailsDelivered,
-            leadAch: r.leadAch,         retailAch: r.retailAch,
-            isFirstZone, zoneRowSpan: isFirstZone ? zoneRowSpan : 0,
-            isFirstAo,   aoRowSpan:   isFirstAo   ? aoRowSpan   : 0,
-            isLastOfAo, isLastOfZone,
-          });
-        }
-      }
+      let lt=0,rt=0,ld=0,rd=0;
+      for (const ad of zd.aos) for (const r of ad.models)
+        { lt+=r.leadTarget; rt+=r.retailTarget; ld+=r.leadsDelivered; rd+=r.retailsDelivered; }
+      const aoCt = zd.aos.length;
+      const modelCt = zd.aos.reduce((s,ad)=>s+ad.models.length,0);
+      m.set(zd.zone, {lt,rt,ld,rd, la:lt>0?ld/lt*100:null, ra:rt>0?rd/rt*100:null, aoCt, modelCt});
     }
-    return result;
+    return m;
   }, [groupedRows]);
 
-  // Render flatRows: Zone <td> only on isFirstZone (rowSpan=zoneRowSpan),
-  // AO <td> only on isFirstAo (rowSpan=aoRowSpan), then Model + 6 metric cells every row.
+  // Aggregate AO summaries for accordion AO rows
+  const aoSummaries = useMemo(() => {
+    const m = new Map();
+    for (const zd of groupedRows) for (const ad of zd.aos) {
+      let lt=0,rt=0,ld=0,rd=0;
+      for (const r of ad.models)
+        { lt+=r.leadTarget; rt+=r.retailTarget; ld+=r.leadsDelivered; rd+=r.retailsDelivered; }
+      m.set(ad.ao, {lt,rt,ld,rd, la:lt>0?ld/lt*100:null, ra:rt>0?rd/rt*100:null, modelCt:ad.models.length});
+    }
+    return m;
+  }, [groupedRows]);
+
+  const toggleZone = useCallback(zone => {
+    setExpandedZones(prev => {
+      const next = new Set(prev);
+      if (next.has(zone)) { next.delete(zone); setExpandedAos(a=>{const n=new Set(a);for(const[k]of n)if(k.startsWith(zone+'\x00'))n.delete(k);return n;}); }
+      else next.add(zone);
+      return next;
+    });
+  }, []);
+
+  const toggleAo = useCallback((zone, ao) => {
+    const key = zone+'\x00'+ao;
+    setExpandedAos(prev => { const next=new Set(prev); next.has(key)?next.delete(key):next.add(key); return next; });
+  }, []);
+
+  const expandAll = useCallback(() => {
+    setExpandedZones(new Set(groupedRows.map(z=>z.zone)));
+    const aoKeys = new Set();
+    for (const zd of groupedRows) for (const ad of zd.aos) aoKeys.add(zd.zone+'\x00'+ad.ao);
+    setExpandedAos(aoKeys);
+  }, [groupedRows]);
+
+  const collapseAll = useCallback(() => {
+    setExpandedZones(new Set());
+    setExpandedAos(new Set());
+  }, []);
+
+  // Render accordion rows
   const buildBodyRows = () => {
     const rows = [];
-    for (let ri = 0; ri < flatRows.length; ri++) {
-      const fd = flatRows[ri];
-      // Bottom border: thick at zone boundary, medium at AO boundary, thin otherwise
-      const rowBdr = fd.isLastOfZone ? '2px solid #93C5FD'
-                   : fd.isLastOfAo   ? '1px solid #BFDBFE'
-                   : '1px solid #F1F5F9';
-      const metricBg = ri % 2 === 0 ? '#fff' : '#F8FAFC';
-      const cells = [];
+    for (const zd of groupedRows) {
+      const zOpen = expandedZones.has(zd.zone);
+      const zs = zoneSummaries.get(zd.zone) || {};
+      const zLa = zs.la; const zRa = zs.ra;
+      // Zone header row
+      rows.push(ce('tr', {
+        key:'z-'+zd.zone, 'data-role':'zone-row',
+        onClick:()=>toggleZone(zd.zone),
+        style:{cursor:'pointer', background:'#EFF6FF'},
+      },
+        ce('td',{colSpan:3, style:{padding:'7px 10px',fontWeight:700,fontSize:11,
+          color:'#1E3A8A',borderBottom:'2px solid #93C5FD',whiteSpace:'nowrap'}},
+          (zOpen?'▾ ':'▶ ')+zd.zone+' ('+zs.aoCt+' AOs)'),
+        ce('td',{style:{padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:600,borderBottom:'2px solid #93C5FD'}},fmtTgt(zs.lt)),
+        ce('td',{style:{padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:600,borderBottom:'2px solid #93C5FD'}},fmtTgt(zs.rt)),
+        ce('td',{style:{padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:600,borderBottom:'2px solid #93C5FD'}},Nf(zs.ld)),
+        ce('td',{style:{padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:600,borderBottom:'2px solid #93C5FD'}},Nf(zs.rd)),
+        ce('td',{style:{padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+          color:zLa!==null?pctColor(zLa):'#94A3B8',borderBottom:'2px solid #93C5FD'}},fmtAch(zLa)),
+        ce('td',{style:{padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+          color:zRa!==null?pctColor(zRa):'#94A3B8',borderBottom:'2px solid #93C5FD'}},fmtAch(zRa)),
+      ));
 
-      if (fd.isFirstZone) {
-        cells.push(ce('td', {
-          key:'z', rowSpan: fd.zoneRowSpan, 'data-role':'zone',
-          style:{
-            padding:'6px 10px', fontWeight:700, fontSize:11,
-            color:'#1E3A8A', background:'#EFF6FF',
-            borderRight:'2px solid #93C5FD', borderBottom:'2px solid #93C5FD',
-            verticalAlign:'middle', whiteSpace:'nowrap',
-          },
-        }, fd.zone));
+      if (!zOpen) continue;
+
+      for (const ad of zd.aos) {
+        const aoKey = zd.zone+'\x00'+ad.ao;
+        const aOpen = expandedAos.has(aoKey);
+        const as = aoSummaries.get(ad.ao) || {};
+        const aLa = as.la; const aRa = as.ra;
+        // AO header row
+        rows.push(ce('tr', {
+          key:'a-'+aoKey, 'data-role':'ao-row',
+          onClick:()=>toggleAo(zd.zone, ad.ao),
+          style:{cursor:'pointer', background:'#F0F9FF'},
+        },
+          ce('td',{style:{padding:'6px 8px',borderBottom:'1px solid #BFDBFE'}}),
+          ce('td',{colSpan:2, style:{padding:'6px 10px',fontWeight:600,fontSize:11,
+            color:'#1E40AF',borderBottom:'1px solid #BFDBFE',whiteSpace:'nowrap',paddingLeft:20}},
+            (aOpen?'▾ ':'▶ ')+ad.ao+' ('+as.modelCt+' models)'),
+          ce('td',{style:{padding:'6px 8px',textAlign:'center',fontSize:11,borderBottom:'1px solid #BFDBFE'}},fmtTgt(as.lt)),
+          ce('td',{style:{padding:'6px 8px',textAlign:'center',fontSize:11,borderBottom:'1px solid #BFDBFE'}},fmtTgt(as.rt)),
+          ce('td',{style:{padding:'6px 8px',textAlign:'center',fontSize:11,borderBottom:'1px solid #BFDBFE'}},Nf(as.ld)),
+          ce('td',{style:{padding:'6px 8px',textAlign:'center',fontSize:11,borderBottom:'1px solid #BFDBFE'}},Nf(as.rd)),
+          ce('td',{style:{padding:'6px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+            color:aLa!==null?pctColor(aLa):'#94A3B8',borderBottom:'1px solid #BFDBFE'}},fmtAch(aLa)),
+          ce('td',{style:{padding:'6px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+            color:aRa!==null?pctColor(aRa):'#94A3B8',borderBottom:'1px solid #BFDBFE'}},fmtAch(aRa)),
+        ));
+
+        if (!aOpen) continue;
+
+        for (let mi = 0; mi < ad.models.length; mi++) {
+          const r = ad.models[mi];
+          const isLast = mi === ad.models.length - 1;
+          const rowBdr = isLast ? '1px solid #BFDBFE' : '1px solid #F1F5F9';
+          const bg = mi%2===0 ? '#fff' : '#F8FAFC';
+          rows.push(ce('tr', {key:'m-'+aoKey+'-'+r.model, 'data-role':'model-row'},
+            ce('td',{style:{padding:'5px 8px',borderBottom:rowBdr,background:bg}}),
+            ce('td',{style:{padding:'5px 8px',borderBottom:rowBdr,background:bg}}),
+            ce('td',{style:{padding:'5px 8px',fontSize:11,whiteSpace:'nowrap',paddingLeft:32,
+              borderBottom:rowBdr,background:bg}}, r.model),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,borderBottom:rowBdr,background:bg}},fmtTgt(r.leadTarget)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,borderBottom:rowBdr,background:bg}},fmtTgt(r.retailTarget)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+              fontWeight:r.leadsDelivered>0?600:400,borderBottom:rowBdr,background:bg}},Nf(r.leadsDelivered)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+              fontWeight:r.retailsDelivered>0?600:400,borderBottom:rowBdr,background:bg}},Nf(r.retailsDelivered)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+              color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',borderBottom:rowBdr,background:bg}},fmtAch(r.leadAch)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+              color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',borderBottom:rowBdr,background:bg}},fmtAch(r.retailAch)),
+          ));
+        }
       }
-
-      if (fd.isFirstAo) {
-        cells.push(ce('td', {
-          key:'a', rowSpan: fd.aoRowSpan, 'data-role':'ao',
-          style:{
-            padding:'6px 10px', fontSize:11, fontWeight:600,
-            color:'#1E40AF', background:'#F0F9FF',
-            borderRight:'1px solid #BFDBFE', borderBottom:'1px solid #BFDBFE',
-            verticalAlign:'middle', whiteSpace:'nowrap',
-          },
-        }, fd.ao));
-      }
-
-      cells.push(
-        ce('td',{key:'m', style:{padding:'5px 8px',fontSize:11,whiteSpace:'nowrap',
-          borderLeft:'1px solid #F1F5F9',borderBottom:rowBdr,background:metricBg}}, fd.model),
-        ce('td',{key:'lt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
-          borderBottom:rowBdr,background:metricBg}}, fmtTgt(fd.leadTarget)),
-        ce('td',{key:'rt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
-          borderBottom:rowBdr,background:metricBg}}, fmtTgt(fd.retailTarget)),
-        ce('td',{key:'ld',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
-          fontWeight:fd.leadsDelivered>0?600:400,borderBottom:rowBdr,background:metricBg}}, Nf(fd.leadsDelivered)),
-        ce('td',{key:'rd',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
-          fontWeight:fd.retailsDelivered>0?600:400,borderBottom:rowBdr,background:metricBg}}, Nf(fd.retailsDelivered)),
-        ce('td',{key:'la',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
-          color:fd.leadAch!==null?pctColor(fd.leadAch):'#94A3B8',borderBottom:rowBdr,background:metricBg}}, fmtAch(fd.leadAch)),
-        ce('td',{key:'ra',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
-          color:fd.retailAch!==null?pctColor(fd.retailAch):'#94A3B8',borderBottom:rowBdr,background:metricBg}}, fmtAch(fd.retailAch)),
-      );
-
-      rows.push(ce('tr', {key:'r'+ri}, ...cells));
     }
 
     // Grand total row
@@ -3227,13 +3262,21 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
 
   return ce('div',{className:'fade-up'},
 
-    // Controls: search + model count + Export CSV (no quarter buttons)
+    // Controls: search + model count + Expand/Collapse + Export CSV
     ce('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:14}},
       ce('input',{type:'text',placeholder:'Search Zone / AO / Model…',value:search,
         onChange:e=>setSearch(e.target.value),
         style:{padding:'5px 12px',borderRadius:16,border:'1px solid #CBD5E1',
           fontSize:11,fontFamily:'inherit',width:220,outline:'none'}}),
       ce('span',{style:{fontSize:10,color:'#6B7280'}},totalModelCount+' models'),
+      ce('button',{onClick:expandAll,style:{
+        padding:'5px 12px',borderRadius:16,background:'#1E40AF',
+        color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
+      }},'+ Expand All'),
+      ce('button',{onClick:collapseAll,style:{
+        padding:'5px 12px',borderRadius:16,background:'#475569',
+        color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
+      }},'− Collapse All'),
       !viewerMode&&ce('button',{onClick:onExport,style:{
         marginLeft:'auto',padding:'5px 14px',borderRadius:16,background:'#9A3412',
         color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
@@ -3279,7 +3322,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       )
     ),
 
-    // Detail grid: flat 9-column table, Zone→AO→Model, no accordion
+    // Detail grid: accordion 9-column table, Zone→AO→Model
     ce('div',{style:{overflowX:'auto',borderRadius:10,
       boxShadow:'0 2px 12px rgba(0,0,0,.08)',background:'#fff'}},
       ce('table',{id:'td-detail-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto'}},
