@@ -931,6 +931,13 @@ function buildPayload(joinedRows){
     'xpulse 200 4v':      'xpulse 210',
   };
   function normForSame(n){ return HERO_SAME_MDL_EQUIV[n] || n; }
+  // Canonical display name for purchased model: collapses variant spellings into one label
+  const HERO_PUR_MDL_CANONICAL = {
+    'XTREME 125R':          'Hero Xtreme 125R',
+    'Hero Splendor Plus XTEC': 'Hero Super Splendor XTEC',
+    'Hero XPulse 200 4V':   'Hero XPulse 210',
+  };
+  function canonPurMdl(s){ return HERO_PUR_MDL_CANONICAL[s] || s; }
 
   // a4: accumulate [L, R_all, R_dms, R_co]
   function a4(m,k,L,Ra,Rd,Rc){const e=m.get(k);if(e){e[0]+=L;e[1]+=Ra;e[2]+=Rd;e[3]+=Rc;}else m.set(k,[L,Ra,Rd,Rc]);}
@@ -1011,7 +1018,7 @@ function buildPayload(joinedRows){
         const Ra2=1,Rd2=(r.callType==='dms')?1:0,Rc2=(r.callType==='co')?1:0;
         a4(rdmA,mi+'|'+isSame+'|'+si+'|'+sti+'|'+ci+'|'+lti+'|'+li,Ra2,Rd2,Rc2,0);
         // Drill-down: also accumulate with purchased model dimension
-        const purMI=idx(purMdlArr,purMdlMap,r.purchasedModel||'');
+        const purMI=idx(purMdlArr,purMdlMap,canonPurMdl(r.purchasedModel||''));
         a4(rdmxA,mi+'|'+purMI+'|'+isSame+'|'+si+'|'+sti+'|'+ci+'|'+lti+'|'+li,Ra2,Rd2,Rc2,0);
       }
     }
