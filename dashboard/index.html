@@ -2493,7 +2493,7 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
       const region = r.region     || 'Unknown';
       const key = dealer + '\x00' + ao + '\x00' + state + '\x00' + region;
       let e = acc.get(key);
-      if (!e) { e = { dealer, ao, state, region, leads:0, retail:0, wip:0, dp:0, l1:0, lost:0 }; acc.set(key, e); }
+      if (!e) { e = { dealer, ao, state, region, oemCrmId:r.oemCrmId||'', leads:0, retail:0, wip:0, dp:0, l1:0, lost:0 }; acc.set(key, e); }
       e.leads++;
       const isR = isRetailedLead(r);
       if (RT === 'dms' ? (isR && r.callType === 'dms') : RT === 'co' ? (isR && r.callType === 'co') : isR) e.retail++;
@@ -2540,8 +2540,8 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
   const arrow = col => sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   const exportCsv = () => {
-    const hdr = ['Dealer','AO','State','Region','Leads','Retail','Conv%','WIP','Direct Push','L1 Nurtured','Lost'];
-    const aoa = [hdr, ...sortedRows.map(r => [r.dealer,r.ao,r.state,r.region,r.leads,r.retail,pct(r.retail,r.leads),r.wip,r.dp,r.l1,r.lost])];
+    const hdr = ['OEM CRM ID','Dealer','AO','State','Region','Leads','Retail','Conv%','WIP','Direct Push','L1 Nurtured','Lost'];
+    const aoa = [hdr, ...sortedRows.map(r => [r.oemCrmId,r.dealer,r.ao,r.state,r.region,r.leads,r.retail,pct(r.retail,r.leads),r.wip,r.dp,r.l1,r.lost])];
     const csv = aoa.map(row => row.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
     const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
