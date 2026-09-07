@@ -251,6 +251,18 @@ const HERO_Q_MONTHS = {
   Q3: new Set(["Oct'2026","Nov'2026","Dec'2026"]),
   Q4: new Set(["Jan'2027","Feb'2027","Mar'2027"]),
 };
+
+const HERO_MONTH_TARGET_CFG = {
+  "Aug'2026": { q:'Q2', div:2 },
+  "Sep'2026": { q:'Q2', div:2 },
+  "Oct'2026": { q:'Q3', div:3 },
+  "Nov'2026": { q:'Q3', div:3 },
+  "Dec'2026": { q:'Q3', div:3 },
+  "Jan'2027": { q:'Q4', div:3 },
+  "Feb'2027": { q:'Q4', div:3 },
+  "Mar'2027": { q:'Q4', div:3 },
+};
+const HERO_TARGET_MONTHS_SET = new Set(Object.keys(HERO_MONTH_TARGET_CFG));
 function heroMonthToQuarter(m) {
   for (const [q, ms] of Object.entries(HERO_Q_MONTHS)) if (ms.has(m)) return q;
   return null;
@@ -2846,47 +2858,34 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
 
 /* ════════════════════════════════════════════════════════════════════
    TARGET VS DELIVERY TAB
-   AO × Model: Lead/Retail Target vs Delivered, by Quarter
+   Zone → AO → Model hierarchy; monthly targets derived from quarter data.
    ════════════════════════════════════════════════════════════════════ */
 const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters, RT, rawJoined, leadsMode, viewerMode }) {
-  const [sortCol, setSortCol] = React.useState('leadTarget');
-  const [sortDir, setSortDir] = React.useState('desc');
-  const [search, setSearch]   = React.useState('');
-  const [selQ,   setSelQ]     = React.useState(new Set(['Q2']));
-  const ALL_Q = ['Q2','Q3','Q4'];
+  const [search, setSearch] = React.useState('');
 
-  const onToggleQ = useCallback(q => setSelQ(prev => {
-    const n = new Set(prev); n.has(q) ? n.delete(q) : n.add(q);
-    return n.size ? n : prev;
-  }), []);
-
-  const onSort = useCallback(col => {
-    setSortCol(prev => {
-      if (prev === col) { setSortDir(d => d==='asc'?'desc':'asc'); return col; }
-      setSortDir('desc'); return col;
-    });
-  }, []);
-
+  // selM: null = All months; Set = specific months chosen in global Month filter
+  // allRows: flat array of {ao,zone,model,leadTarget,retailTarget,leadsDelivered,retailsDelivered,leadAch,retailAch}
   const allRows = useMemo(() => {
     if (!rawJoined || !rawJoined.length) return [];
+    const selM = (filters.months && filters.months.size > 0) ? filters.months : null;
     const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf } = filters;
     const allS   = !sf  || sf.size  === 0;
     const allLT  = !ltf || ltf.size === 0;
     const allMdl = !mdf || mdf.size === 0;
     const allSt  = !stf || stf.size === 0;
     const allCity= !cf  || cf.size  === 0;
-    // Aggregate delivered from rawJoined using quarter filter (not the global month filter).
-    // Keys use heroNormTargetAo + heroNormTargetModel for case-insensitive, prefix-stripped matching.
+    // Aggregate delivered counts
     const delMap = new Map();
     for (const r of rawJoined) {
       const effMonth = (leadsMode==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month;
-      if (!selQ.has(heroMonthToQuarter(effMonth))) continue;
+      // Month gating: specific months OR all target months (Aug–Mar; Jul excluded)
+      if (selM !== null) { if (!selM.has(effMonth)) continue; }
+      else { if (!HERO_TARGET_MONTHS_SET.has(effMonth)) continue; }
       if (!allS   &&(sf  ===FILTER_CLEARED||!sf.has(r.source))) continue;
       if (!allLT  &&(ltf ===FILTER_CLEARED||!ltf.has(r.lt)))   continue;
       if (!allMdl &&(mdf ===FILTER_CLEARED||!mdf.has(r.model)))continue;
       if (!allSt  &&(stf ===FILTER_CLEARED||!stf.has(r.state)))continue;
       if (!allCity&&(cf  ===FILTER_CLEARED||!cf.has(r.city)))  continue;
-      // Normalise AO and model to match target data keys
       const ao    = heroNormTargetAo(r.ao||'');
       const model = heroNormLeadModelForTD(r.model||'');
       const key   = ao+'\x00'+model;
@@ -2896,240 +2895,277 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       const isR = isRetailedLead(r);
       if (RT==='dms'?(isR&&r.callType==='dms'):RT==='co'?(isR&&r.callType==='co'):isR) d.r++;
     }
-    const rows=[];
-    for (const [ao,aoData] of Object.entries(HERO_TARGET_DATA)){
-      for (const [model,qData] of Object.entries(aoData.models)){
-        let lt=0,rt=0;
-        for (const q of selQ){if(qData[q]){lt+=qData[q][0];rt+=qData[q][1];}}
-        // Look up using the canonical target keys (ao and model are already canonical here)
-        const del=delMap.get(ao+'\x00'+model)||{l:0,r:0};
-        // leadAch/retailAch: null when target=0 (to show '–'); otherwise ratio in %
-        const la=lt>0?del.l/lt*100:null, ra=rt>0?del.r/rt*100:null;
-        rows.push({ao,zone:aoData.zone,model,leadTarget:lt,retailTarget:rt,
-          leadsDelivered:del.l,retailsDelivered:del.r,leadAch:la,retailAch:ra});
+    // Build target rows using monthly target allocation
+    const rows = [];
+    for (const [ao, aoData] of Object.entries(HERO_TARGET_DATA)) {
+      for (const [model, qData] of Object.entries(aoData.models)) {
+        let lt = 0, rt = 0;
+        if (selM !== null) {
+          // Sum monthly slice for each selected month
+          for (const m of selM) {
+            const mc = HERO_MONTH_TARGET_CFG[m];
+            if (!mc) continue; // Jul or unmapped → no target
+            if (qData[mc.q]) { lt += qData[mc.q][0] / mc.div; rt += qData[mc.q][1] / mc.div; }
+          }
+        } else {
+          // All: Q2 + Q3 + Q4 (= sum of all 8 monthly slices)
+          for (const q of ['Q2','Q3','Q4']) {
+            if (qData[q]) { lt += qData[q][0]; rt += qData[q][1]; }
+          }
+        }
+        const del = delMap.get(ao+'\x00'+model) || {l:0, r:0};
+        const la = lt>0 ? del.l/lt*100 : null;
+        const ra = rt>0 ? del.r/rt*100 : null;
+        rows.push({ ao, zone:aoData.zone, model, leadTarget:lt, retailTarget:rt,
+          leadsDelivered:del.l, retailsDelivered:del.r, leadAch:la, retailAch:ra });
       }
     }
     return rows;
-  },[rawJoined,filters,selQ,leadsMode,RT]);
+  }, [rawJoined, filters, leadsMode, RT]);
 
-  const filteredRows = useMemo(()=>{
-    if(!search.trim())return allRows;
-    const q=search.toLowerCase();
-    return allRows.filter(r=>r.ao.toLowerCase().includes(q)||r.model.toLowerCase().includes(q)||r.zone.toLowerCase().includes(q));
-  },[allRows,search]);
-
-  const sortedRows = useMemo(()=>{
-    const s=[...filteredRows];
-    const dir=sortDir==='asc'?1:-1;
-    s.sort((a,b)=>{
-      const av=a[sortCol],bv=b[sortCol];
-      return typeof av==='string'?dir*av.localeCompare(bv):dir*(av-bv);
-    });
-    return s;
-  },[filteredRows,sortCol,sortDir]);
-
-  const totals=useMemo(()=>sortedRows.reduce((acc,r)=>({
-    leadTarget:acc.leadTarget+r.leadTarget,retailTarget:acc.retailTarget+r.retailTarget,
-    leadsDelivered:acc.leadsDelivered+r.leadsDelivered,retailsDelivered:acc.retailsDelivered+r.retailsDelivered,
-  }),{leadTarget:0,retailTarget:0,leadsDelivered:0,retailsDelivered:0}),[sortedRows]);
-
-  useEffect(()=>{
-    window.heroTargetVsDeliveryQA=function(){
-      console.group('[HERO Target vs Delivery QA]');
-      console.log('Quarters selected:',[...selQ].join(', '));
-      console.log('Total AO×Model rows:',allRows.length);
-      const zeroTgt=allRows.filter(r=>r.leadTarget===0&&r.retailTarget===0);
-      console.log('Zero-target rows:',zeroTgt.length);
-      const withDel=allRows.filter(r=>r.leadsDelivered>0);
-      console.log('Rows with ≥1 lead delivered:',withDel.length);
-      const orphan=allRows.filter(r=>r.leadsDelivered>0&&r.leadTarget===0);
-      if(orphan.length){console.warn('Delivered but no target (AO/Model mismatch?):');console.table(orphan.map(r=>({ao:r.ao,model:r.model,delivered:r.leadsDelivered})));}
-      const tot=allRows.reduce((acc,r)=>({lt:acc.lt+r.leadTarget,rt:acc.rt+r.retailTarget,ld:acc.ld+r.leadsDelivered,rd:acc.rd+r.retailsDelivered}),{lt:0,rt:0,ld:0,rd:0});
-      console.log('Totals — LeadTarget:'+tot.lt+' LeadDel:'+tot.ld+' ('+((tot.lt?tot.ld/tot.lt*100:0).toFixed(1))+'%)  RetailTarget:'+tot.rt+' RetailDel:'+tot.rd+' ('+((tot.rt?tot.rd/tot.rt*100:0).toFixed(1))+'%)');
-      console.group('[HERO Target vs Delivery Summary QA]');
-      console.log('Selected quarters:',[...selQ].join(', '));
-      console.log('Lead Target:',tot.lt>0?tot.lt.toLocaleString('en-IN'):'—');
-      console.log('Lead Delivered:',tot.ld.toLocaleString('en-IN'));
-      console.log('Lead Achievement:',tot.lt>0?(tot.ld/tot.lt*100).toFixed(1)+'%':'—');
-      console.log('Retail Target:',tot.rt>0?tot.rt.toLocaleString('en-IN'):'—');
-      console.log('Retail Delivered:',tot.rd.toLocaleString('en-IN'));
-      console.log('Retail Achievement:',tot.rt>0?(tot.rd/tot.rt*100).toFixed(1)+'%':'—');
-      console.log('✓ Summary uses allRows (same source as table, unaffected by search box)');
-      console.log('✓ Grand Total row matches summary when search box is empty');
-      console.groupEnd();
-      // Raw AO / Model diagnostics from rawJoined
-      if(rawJoined&&rawJoined.length){
-        const rawAOs=[...new Set(rawJoined.map(r=>r.ao||''))].sort();
-        const rawModels=[...new Set(rawJoined.map(r=>r.model||''))].sort();
-        const normAOs=[...new Set(rawJoined.map(r=>heroNormTargetAo(r.ao||'')))].sort();
-        const normModels=[...new Set(rawJoined.map(r=>heroNormLeadModelForTD(r.model||'')))].sort();
-        const targetAOs=Object.keys(HERO_TARGET_DATA).sort();
-        const targetModels=[...new Set(Object.values(HERO_TARGET_DATA).flatMap(d=>Object.keys(d.models)))].sort();
-        console.log('Raw AOs in lead data:',rawAOs);
-        console.log('Normalised AOs (heroNormTargetAo):',normAOs);
-        console.log('Target AO keys:',targetAOs);
-        const unmatchedAOs=normAOs.filter(a=>!targetAOs.includes(a));
-        const knownUnresolvable=['Lucknow','Patna','Not Available'];
-        const trulyUnmatched=unmatchedAOs.filter(a=>!knownUnresolvable.includes(a));
-        const unresolvable=unmatchedAOs.filter(a=>knownUnresolvable.includes(a));
-        if(trulyUnmatched.length)console.warn('AOs with no target match (unexpected):',trulyUnmatched);
-        else if(!unmatchedAOs.length)console.log('✓ All normalised AOs match target AO keys');
-        if(unresolvable.length){
-          const cnt=rawJoined.filter(r=>unresolvable.includes(heroNormTargetAo(r.ao||''))).length;
-          console.warn('Unresolvable AOs — Lead Master has no sub-AO field to split into target sub-AOs:',unresolvable,'('+cnt+' lead rows unattributed — Lucknow-1/2 and Patna-1/2 require sub-AO data not present in Lead Master)');
-        }
-        console.log('Raw models in lead data:',rawModels);
-        console.log('Normalised models (heroNormLeadModelForTD):',normModels);
-        const unmatchedModels=normModels.filter(m=>!targetModels.includes(m));
-        if(unmatchedModels.length)console.warn('Models with no target match:',unmatchedModels);
-        else console.log('✓ All normalised models match target model keys');
-        // Sample rows by quarter
-        const qSamples={};
-        for(const r of rawJoined.slice(0,500)){
-          const em=(leadsMode==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month;
-          const q=heroMonthToQuarter(em);
-          if(!qSamples[q])qSamples[q]=0;
-          qSamples[q]++;
-        }
-        console.log('Lead month→quarter distribution (first 500 rows):',qSamples);
-      }
-      console.groupEnd();
-      return{allRows,selQ:[...selQ],totals:tot};
-    };
-  },[allRows,selQ,rawJoined,leadsMode]);
-
-  const pctColor=p=>p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
-  // Target columns: '—' for zero (no plan), numbers for non-zero
-  const fmtTgt=n=>n===0?'—':n.toLocaleString('en-IN');
-  // Delivered columns: always show a number (0 means no delivery, not missing data)
-  const fmtDel=n=>n.toLocaleString('en-IN');
-  // Achievement: null means target=0 (show '—'); otherwise show percentage (even 0.0%)
-  const fmtAch=p=>p===null?'—':p.toFixed(1)+'%';
-
-  const thSt={background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',color:'#fff',fontWeight:700,
-    fontSize:9.5,padding:'8px 10px',cursor:'pointer',whiteSpace:'nowrap',textAlign:'center',userSelect:'none'};
-  const mkTh=(col,lbl)=>ce('th',{style:{...thSt,...(sortCol===col?{background:'#1E40AF'}:{})},onClick:()=>onSort(col)},
-    lbl+(sortCol===col?(sortDir==='asc'?' ▲':' ▼'):''));
-
-  const onExport=useCallback(()=>{
-    const qs=[...selQ].join('+');
-    const hdr='Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
-    const body=sortedRows.map(r=>
-      [r.zone,r.ao,r.model,r.leadTarget,r.retailTarget,r.leadsDelivered,r.retailsDelivered,
-       r.leadTarget>0?r.leadAch.toFixed(1):'',r.retailTarget>0?r.retailAch.toFixed(1):''].join(',')
-    ).join('\n');
-    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([hdr+body],{type:'text/csv'}));
-    a.download='Hero_Target_vs_Delivery_'+qs+'.csv';a.click();
-  },[sortedRows,selQ]);
-
-  const totLa=totals.leadTarget>0?totals.leadsDelivered/totals.leadTarget*100:0;
-  const totRa=totals.retailTarget>0?totals.retailsDelivered/totals.retailTarget*100:0;
-
-  // Summary totals derived from allRows (all quarter+filter data, unaffected by search box)
-  const summaryTotals=useMemo(()=>allRows.reduce((acc,r)=>({
+  // Summary totals: unaffected by search box
+  const summaryTotals = useMemo(() => allRows.reduce((acc,r) => ({
     lt:acc.lt+r.leadTarget, rt:acc.rt+r.retailTarget,
     ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered,
-  }),{lt:0,rt:0,ld:0,rd:0}),[allRows]);
-  const sumLa=summaryTotals.lt>0?summaryTotals.ld/summaryTotals.lt*100:null;
-  const sumRa=summaryTotals.rt>0?summaryTotals.rd/summaryTotals.rt*100:null;
+  }), {lt:0, rt:0, ld:0, rd:0}), [allRows]);
+  const sumLa = summaryTotals.lt > 0 ? summaryTotals.ld/summaryTotals.lt*100 : null;
+  const sumRa = summaryTotals.rt > 0 ? summaryTotals.rd/summaryTotals.rt*100 : null;
 
-  const sumThSt={background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',color:'#fff',
+  // Hierarchy: Zone → AO → [model rows], with optional search filtering
+  const groupedRows = useMemo(() => {
+    const sq = search.trim().toLowerCase();
+    const src = sq ? allRows.filter(r =>
+      r.zone.toLowerCase().includes(sq) ||
+      r.ao.toLowerCase().includes(sq) ||
+      r.model.toLowerCase().includes(sq)
+    ) : allRows;
+    const zoneMap = new Map();
+    for (const r of src) {
+      if (!zoneMap.has(r.zone)) zoneMap.set(r.zone, new Map());
+      const aoMap = zoneMap.get(r.zone);
+      if (!aoMap.has(r.ao)) aoMap.set(r.ao, []);
+      aoMap.get(r.ao).push(r);
+    }
+    return [...zoneMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([zone, aoMap]) => ({
+      zone,
+      aos: [...aoMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([ao, models]) => ({
+        ao, models: models.sort((a,b)=>a.model.localeCompare(b.model)),
+      })),
+    }));
+  }, [allRows, search]);
+
+  // Grand totals for the detail grid (respects search)
+  const grandTotals = useMemo(() => {
+    let lt=0, rt=0, ld=0, rd=0;
+    for (const zd of groupedRows) for (const ad of zd.aos) for (const r of ad.models)
+      { lt+=r.leadTarget; rt+=r.retailTarget; ld+=r.leadsDelivered; rd+=r.retailsDelivered; }
+    return {lt, rt, ld, rd};
+  }, [groupedRows]);
+
+  const totalModelCount = useMemo(() =>
+    groupedRows.reduce((s,z) => s + z.aos.reduce((a,ao) => a + ao.models.length, 0), 0),
+    [groupedRows]);
+
+  // QA function
+  useEffect(() => {
+    window.heroTargetVsDeliveryQA = function() {
+      const selM = (filters.months && filters.months.size > 0) ? [...filters.months] : null;
+      console.group('[HERO Target vs Delivery QA]');
+      console.log('Selected month(s):', selM ? selM.join(', ') : 'All (Aug–Mar)');
+      // Helper: sum monthly targets across all AO×Model for given months array
+      function monthlySum(months) {
+        let lt=0, rt=0;
+        for (const [,aoData] of Object.entries(HERO_TARGET_DATA))
+          for (const [,qData] of Object.entries(aoData.models))
+            for (const m of months) {
+              const mc=HERO_MONTH_TARGET_CFG[m];
+              if (mc&&qData[mc.q]){lt+=qData[mc.q][0]/mc.div;rt+=qData[mc.q][1]/mc.div;}
+            }
+        return {lt,rt};
+      }
+      function qSum(q) {
+        let lt=0,rt=0;
+        for (const [,aoData] of Object.entries(HERO_TARGET_DATA))
+          for (const [,qData] of Object.entries(aoData.models))
+            if(qData[q]){lt+=qData[q][0];rt+=qData[q][1];}
+        return {lt,rt};
+      }
+      const eps=0.001;
+      const q2=qSum('Q2'),q3=qSum('Q3'),q4=qSum('Q4');
+      const aug=monthlySum(["Aug'2026"]),sep=monthlySum(["Sep'2026"]);
+      const oct=monthlySum(["Oct'2026"]),nov=monthlySum(["Nov'2026"]),dec=monthlySum(["Dec'2026"]);
+      const jan=monthlySum(["Jan'2027"]),feb=monthlySum(["Feb'2027"]),mar=monthlySum(["Mar'2027"]);
+      console.group('Q2 (Aug+Sep = Q2)');
+      console.log('Aug LT:',aug.lt.toFixed(1),'  Sep LT:',sep.lt.toFixed(1),'  Sum:',( aug.lt+sep.lt).toFixed(1),'  Q2:',q2.lt,'  ✓:',Math.abs(aug.lt+sep.lt-q2.lt)<eps);
+      console.log('Aug RT:',aug.rt.toFixed(1),'  Sep RT:',sep.rt.toFixed(1),'  Sum:',(aug.rt+sep.rt).toFixed(1),'  Q2:',q2.rt,'  ✓:',Math.abs(aug.rt+sep.rt-q2.rt)<eps);
+      console.groupEnd();
+      console.group('Q3 (Oct+Nov+Dec = Q3)');
+      console.log('Sum LT:',(oct.lt+nov.lt+dec.lt).toFixed(1),'  Q3:',q3.lt,'  ✓:',Math.abs(oct.lt+nov.lt+dec.lt-q3.lt)<eps);
+      console.log('Sum RT:',(oct.rt+nov.rt+dec.rt).toFixed(1),'  Q3:',q3.rt,'  ✓:',Math.abs(oct.rt+nov.rt+dec.rt-q3.rt)<eps);
+      console.groupEnd();
+      console.group('Q4 (Jan+Feb+Mar = Q4)');
+      console.log('Sum LT:',(jan.lt+feb.lt+mar.lt).toFixed(1),'  Q4:',q4.lt,'  ✓:',Math.abs(jan.lt+feb.lt+mar.lt-q4.lt)<eps);
+      console.log('Sum RT:',(jan.rt+feb.rt+mar.rt).toFixed(1),'  Q4:',q4.rt,'  ✓:',Math.abs(jan.rt+feb.rt+mar.rt-q4.rt)<eps);
+      console.groupEnd();
+      const allM=monthlySum(Object.keys(HERO_MONTH_TARGET_CFG));
+      const allQ=q2.lt+q3.lt+q4.lt;
+      console.group('All-months (= Q2+Q3+Q4)');
+      console.log('Sum of monthly LT:',allM.lt.toFixed(1),'  Q2+Q3+Q4 LT:',allQ,'  ✓:',Math.abs(allM.lt-allQ)<eps);
+      console.log('Sum of monthly RT:',allM.rt.toFixed(1),'  Q2+Q3+Q4 RT:',(q2.rt+q3.rt+q4.rt),'  ✓:',Math.abs(allM.rt-(q2.rt+q3.rt+q4.rt))<eps);
+      console.groupEnd();
+      console.log('Summary totals (unfiltered by search):',summaryTotals);
+      console.log('Grand totals (search-filtered):',grandTotals);
+      console.log('Detail model rows shown:',totalModelCount);
+      console.group('Hierarchy spot-check (first 5 AOs)');
+      let n=0;
+      for (const zd of groupedRows) { for (const ad of zd.aos) { if(n++>4) break; console.log('Zone:',zd.zone,'  AO:',ad.ao,'  Models:',ad.models.map(m=>m.model).join(', ')); } }
+      console.groupEnd();
+      // AO/model diagnostics (same as before)
+      if(rawJoined&&rawJoined.length){
+        const knownUnresolvable=['Lucknow','Patna','Not Available'];
+        const normAOs=[...new Set(rawJoined.map(r=>heroNormTargetAo(r.ao||'')))].sort();
+        const targetAOs=Object.keys(HERO_TARGET_DATA).sort();
+        const unmatched=normAOs.filter(a=>!targetAOs.includes(a));
+        const truly=unmatched.filter(a=>!knownUnresolvable.includes(a));
+        if(truly.length)console.warn('AOs with no target match:',truly);
+        else console.log('✓ All normalised AOs match target AO keys');
+        if(unmatched.filter(a=>knownUnresolvable.includes(a)).length)
+          console.warn('Unresolvable AOs (Lucknow/Patna/N-A — no sub-AO in Lead Master):',unmatched.filter(a=>knownUnresolvable.includes(a)));
+      }
+      console.groupEnd();
+      return {allRows, summaryTotals, grandTotals, groupedRows};
+    };
+  }, [allRows, summaryTotals, grandTotals, groupedRows, filters, rawJoined]);
+
+  const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
+  const fmtTgt   = n => n===0?'—':Nf(Math.round(n));
+  const fmtDel   = n => Nf(n);
+  const fmtAch   = p => p===null?'—':p.toFixed(1)+'%';
+
+  const selMonthLabel = (filters.months && filters.months.size > 0) ? [...filters.months].join(', ') : 'All Months (Aug–Mar)';
+
+  const onExport = useCallback(() => {
+    const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
+    const rows = [];
+    for (const zd of groupedRows) for (const ad of zd.aos) for (const r of ad.models)
+      rows.push([r.zone,r.ao,r.model,
+        r.leadTarget>0?r.leadTarget.toFixed(4):0,
+        r.retailTarget>0?r.retailTarget.toFixed(4):0,
+        r.leadsDelivered,r.retailsDelivered,
+        r.leadTarget>0?r.leadAch.toFixed(1):'',
+        r.retailTarget>0?r.retailAch.toFixed(1):''].join(','));
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([hdr+rows.join('\n')],{type:'text/csv'}));
+    a.download='Hero_Target_vs_Delivery_'+selMonthLabel.replace(/[^a-z0-9]/gi,'_')+'.csv';
+    a.click();
+  }, [groupedRows, selMonthLabel]);
+
+  const sumThSt = {background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',color:'#fff',
     fontWeight:700,fontSize:11,padding:'9px 14px',textAlign:'center',whiteSpace:'nowrap'};
+  const thSt = {background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',color:'#fff',fontWeight:700,
+    fontSize:9.5,padding:'8px 10px',whiteSpace:'nowrap',textAlign:'center',userSelect:'none'};
+
+  // Build hierarchy rows for the detail table
+  const buildBodyRows = () => {
+    const rows = [];
+    for (const {zone, aos} of groupedRows) {
+      rows.push(ce('tr',{key:'z-'+zone,style:{background:'#1E3A8A',color:'#fff',fontWeight:700}},
+        ce('td',{colSpan:7,style:{padding:'7px 10px 7px 12px',fontSize:11,letterSpacing:'.06em'}},
+          '▪ '+zone.toUpperCase())
+      ));
+      for (const {ao, models} of aos) {
+        rows.push(ce('tr',{key:'ao-'+zone+ao,style:{background:'#DBEAFE',borderTop:'1px solid #BFDBFE'}},
+          ce('td',{colSpan:7,style:{padding:'5px 10px 5px 26px',fontSize:11,fontWeight:700,color:'#1E40AF'}},
+            '▸ '+ao)
+        ));
+        for (let i=0; i<models.length; i++) {
+          const r = models[i];
+          rows.push(ce('tr',{key:'r-'+ao+r.model,style:{background:i%2===0?'#fff':'#F8FAFC'}},
+            ce('td',{style:{padding:'6px 10px 6px 40px',fontSize:11}},r.model),
+            ce('td',{style:{padding:'6px 10px',textAlign:'center'}},fmtTgt(r.leadTarget)),
+            ce('td',{style:{padding:'6px 10px',textAlign:'center'}},fmtTgt(r.retailTarget)),
+            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:r.leadsDelivered>0?600:400}},fmtDel(r.leadsDelivered)),
+            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:r.retailsDelivered>0?600:400}},fmtDel(r.retailsDelivered)),
+            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8'}},fmtAch(r.leadAch)),
+            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8'}},fmtAch(r.retailAch)),
+          ));
+        }
+      }
+    }
+    const gtLa = grandTotals.lt>0 ? grandTotals.ld/grandTotals.lt*100 : 0;
+    const gtRa = grandTotals.rt>0 ? grandTotals.rd/grandTotals.rt*100 : 0;
+    rows.push(ce('tr',{key:'grand',style:{background:'#1e293b',color:'#fff',fontWeight:700}},
+      ce('td',{style:{padding:'8px 10px'}},ce('span',null,'Grand Total (',ce('span',{style:{fontWeight:400}},totalModelCount+' rows'),')')),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(Math.round(grandTotals.lt))),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(Math.round(grandTotals.rt))),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(grandTotals.ld)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(grandTotals.rd)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center',color:grandTotals.lt>0?pctColor(gtLa):'#94A3B8'}},grandTotals.lt>0?gtLa.toFixed(1)+'%':'—'),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center',color:grandTotals.rt>0?pctColor(gtRa):'#94A3B8'}},grandTotals.rt>0?gtRa.toFixed(1)+'%':'—'),
+    ));
+    return rows;
+  };
 
   return ce('div',{className:'fade-up'},
+    // Controls bar (no quarter buttons — month controlled by global Month filter)
     ce('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:14}},
-      ce('span',{style:{fontSize:11,fontWeight:700,color:'#374151'}},'Quarter:'),
-      ALL_Q.map(q=>ce('button',{key:q,onClick:()=>onToggleQ(q),style:{
-        padding:'4px 14px',borderRadius:16,border:'1px solid #1E3A8A',fontSize:11,fontWeight:700,
-        cursor:'pointer',fontFamily:'inherit',
-        background:selQ.has(q)?'#1E3A8A':'#fff',color:selQ.has(q)?'#fff':'#1E3A8A',
-      }},q)),
-      ce('input',{type:'text',placeholder:'Search AO / Model…',value:search,onChange:e=>setSearch(e.target.value),
-        style:{padding:'5px 12px',borderRadius:16,border:'1px solid #CBD5E1',fontSize:11,fontFamily:'inherit',width:200,outline:'none'}}),
-      ce('span',{style:{fontSize:10,color:'#6B7280'}},sortedRows.length+' rows'),
+      ce('input',{type:'text',placeholder:'Search Zone / AO / Model…',value:search,onChange:e=>setSearch(e.target.value),
+        style:{padding:'5px 12px',borderRadius:16,border:'1px solid #CBD5E1',fontSize:11,fontFamily:'inherit',width:220,outline:'none'}}),
+      ce('span',{style:{fontSize:10,color:'#6B7280'}},totalModelCount+' models'),
       !viewerMode&&ce('button',{onClick:onExport,style:{
         marginLeft:'auto',padding:'5px 14px',borderRadius:16,background:'#9A3412',
         color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
       }},'⬇ Export CSV'),
     ),
 
-    /* ── Summary table ── */
+    // Summary table
     ce('div',{style:{marginBottom:14,overflow:'hidden',borderRadius:10,boxShadow:'0 2px 12px rgba(0,0,0,.08)',border:'1px solid #E2E8F0',background:'#fff'}},
       ce('div',{style:{background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',padding:'8px 14px',display:'flex',alignItems:'center',gap:8}},
         ce('span',{style:{color:'#fff',fontWeight:700,fontSize:11,letterSpacing:'.04em'}},'TARGET vs DELIVERY SUMMARY'),
-        ce('span',{style:{color:'rgba(255,255,255,.6)',fontSize:10}},
-          '('+[...selQ].join(', ')+')',
-        ),
+        ce('span',{style:{color:'rgba(255,255,255,.6)',fontSize:10}},'('+selMonthLabel+')'),
       ),
       ce('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:12}},
-        ce('thead',null,
-          ce('tr',null,
-            ce('th',{style:{...sumThSt,textAlign:'left',width:'28%'}},'Metric'),
-            ce('th',{style:sumThSt},'Target'),
-            ce('th',{style:sumThSt},'Delivered'),
-            ce('th',{style:sumThSt},'Achievement'),
-          )
-        ),
+        ce('thead',null,ce('tr',null,
+          ce('th',{style:{...sumThSt,textAlign:'left',width:'28%'}},'Metric'),
+          ce('th',{style:sumThSt},'Target'),
+          ce('th',{style:sumThSt},'Delivered'),
+          ce('th',{style:sumThSt},'Achievement'),
+        )),
         ce('tbody',null,
           ce('tr',{style:{background:'#fff'}},
             ce('td',{style:{padding:'9px 14px',fontWeight:700,color:'#374151',fontSize:12}},'Leads'),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.lt>0?Nf(summaryTotals.lt):'—'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.lt>0?Nf(Math.round(summaryTotals.lt)):'—'),
             ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.ld)),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,
-              color:sumLa!==null?pctColor(sumLa):'#94A3B8'}},fmtAch(sumLa)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,color:sumLa!==null?pctColor(sumLa):'#94A3B8'}},fmtAch(sumLa)),
           ),
           ce('tr',{style:{background:'#F8FAFC'}},
             ce('td',{style:{padding:'9px 14px',fontWeight:700,color:'#374151',fontSize:12}},'Retail'),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.rt>0?Nf(summaryTotals.rt):'—'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.rt>0?Nf(Math.round(summaryTotals.rt)):'—'),
             ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.rd)),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,
-              color:sumRa!==null?pctColor(sumRa):'#94A3B8'}},fmtAch(sumRa)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,color:sumRa!==null?pctColor(sumRa):'#94A3B8'}},fmtAch(sumRa)),
           ),
         )
       )
     ),
 
+    // Detailed hierarchy grid: Zone → AO → Model
     ce('div',{style:{overflowX:'auto',borderRadius:10,boxShadow:'0 2px 12px rgba(0,0,0,.08)',background:'#fff'}},
       ce('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
         ce('thead',null,ce('tr',null,
-          ce('th',{style:{...thSt,textAlign:'left'}},'Zone'),
-          ce('th',{style:{...thSt,textAlign:'left'}},'AO'),
-          ce('th',{style:{...thSt,textAlign:'left'}},'Model'),
-          mkTh('leadTarget','Lead Target'),
-          mkTh('retailTarget','Retail Target'),
-          mkTh('leadsDelivered','Leads Delivered'),
-          mkTh('retailsDelivered','Retails Delivered'),
-          mkTh('leadAch','Lead Ach%'),
-          mkTh('retailAch','Retail Ach%'),
+          ce('th',{style:{...thSt,textAlign:'left',minWidth:160}},'Model'),
+          ce('th',{style:thSt},'Lead Target'),
+          ce('th',{style:thSt},'Retail Target'),
+          ce('th',{style:thSt},'Leads Delivered'),
+          ce('th',{style:thSt},'Retails Delivered'),
+          ce('th',{style:thSt},'Lead Ach%'),
+          ce('th',{style:thSt},'Retail Ach%'),
         )),
-        ce('tbody',null,
-          sortedRows.map((r,i)=>ce('tr',{key:r.ao+'\x00'+r.model,style:{background:i%2===0?'#fff':'#f8fafc'}},
-            ce('td',{style:{padding:'6px 10px',color:'#64748B',fontSize:10}},r.zone),
-            ce('td',{style:{padding:'6px 10px',fontWeight:600}},r.ao),
-            ce('td',{style:{padding:'6px 10px'}},r.model),
-            ce('td',{style:{padding:'6px 10px',textAlign:'center'}},fmtTgt(r.leadTarget)),
-            ce('td',{style:{padding:'6px 10px',textAlign:'center'}},fmtTgt(r.retailTarget)),
-            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:r.leadsDelivered>0?600:400}},fmtDel(r.leadsDelivered)),
-            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:r.retailsDelivered>0?600:400}},fmtDel(r.retailsDelivered)),
-            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:700,
-              color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8'}},fmtAch(r.leadAch)),
-            ce('td',{style:{padding:'6px 10px',textAlign:'center',fontWeight:700,
-              color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8'}},fmtAch(r.retailAch)),
-          )),
-          ce('tr',{style:{background:'#1e293b',color:'#fff',fontWeight:700}},
-            ce('td',{style:{padding:'8px 10px',fontSize:10},colSpan:3},'Grand Total ('+sortedRows.length+' rows)'),
-            ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(totals.leadTarget)),
-            ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(totals.retailTarget)),
-            ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(totals.leadsDelivered)),
-            ce('td',{style:{padding:'8px 10px',textAlign:'center'}},Nf(totals.retailsDelivered)),
-            ce('td',{style:{padding:'8px 10px',textAlign:'center',color:pctColor(totLa)}},totals.leadTarget>0?totLa.toFixed(1)+'%':'—'),
-            ce('td',{style:{padding:'8px 10px',textAlign:'center',color:pctColor(totRa)}},totals.retailTarget>0?totRa.toFixed(1)+'%':'—'),
-          )
-        )
+        ce('tbody',null,...buildBodyRows())
       )
     )
   );
 });
+
 
 /* ════════════════════════════════════════════════════════════════════
    RETAIL DISPERSION TAB
