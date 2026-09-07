@@ -3080,59 +3080,76 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     textAlign:'center', whiteSpace:'nowrap',
   };
 
-  // Flat 9-column table: Zone (rowSpan) | AO (rowSpan) | Model | metrics…
-  // No Zone/AO header rows — all hierarchy via rowSpan only.
-  const buildBodyRows = () => {
-    const rows = [];
-
-    for (const {zone, aos} of groupedRows) {
-      const zoneRowSpan = aos.reduce((s, ad) => s + ad.models.length, 0);
-      let zoneRendered = false;
-
-      for (const {ao, models} of aos) {
-        const aoRowSpan = models.length;
-
-        for (let i = 0; i < models.length; i++) {
-          const r = models[i];
-          const bg = i % 2 === 0 ? '#fff' : '#F8FAFC';
-          const cells = [];
-
-          // Zone cell: rowspan covers all models in this zone; only added on first row
-          if (!zoneRendered && i === 0) {
-            cells.push(ce('td', {key:'zn', rowSpan:zoneRowSpan, style:{
-              padding:'6px 10px', fontWeight:700, fontSize:11,
-              color:'#1E3A8A', background:'#EFF6FF',
-              borderRight:'2px solid #BFDBFE', verticalAlign:'middle',
-              whiteSpace:'nowrap',
-            }}, zone));
-          }
-
-          // AO cell: rowspan covers all models in this AO; only added on first row of AO
-          if (i === 0) {
-            cells.push(ce('td', {key:'ao', rowSpan:aoRowSpan, style:{
-              padding:'6px 10px', fontSize:11, fontWeight:600,
-              color:'#1E40AF', background:'#F0F9FF',
-              borderRight:'1px solid #DBEAFE', verticalAlign:'middle',
-              whiteSpace:'nowrap',
-            }}, ao));
-            if (!zoneRendered) zoneRendered = true;
-          }
-
-          // Model + all 6 metric cells
-          cells.push(
-            ce('td',{key:'mdl',style:{padding:'5px 8px',fontSize:11,whiteSpace:'nowrap',borderLeft:'1px solid #F1F5F9'}},r.model),
-            ce('td',{key:'lt',style:{padding:'5px 8px',textAlign:'center',fontSize:11}},fmtTgt(r.leadTarget)),
-            ce('td',{key:'rt',style:{padding:'5px 8px',textAlign:'center',fontSize:11}},fmtTgt(r.retailTarget)),
-            ce('td',{key:'ld',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:r.leadsDelivered>0?600:400}},Nf(r.leadsDelivered)),
-            ce('td',{key:'rd',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:r.retailsDelivered>0?600:400}},Nf(r.retailsDelivered)),
-            ce('td',{key:'la',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8'}},fmtAch(r.leadAch)),
-            ce('td',{key:'ra',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8'}},fmtAch(r.retailAch)),
-          );
-
-          rows.push(ce('tr',{key:'r-'+zone+ao+r.model,style:{background:bg,borderBottom:'1px solid #F1F5F9'}},
-            ...cells));
+  // Pre-flatten groupedRows into one descriptor per rendered table row.
+  // Each descriptor explicitly records whether Zone/AO cells must be emitted
+  // (isFirstZone / isFirstAo) and their rowSpan values.
+  // Rendering then becomes a trivial loop with no mutable flags.
+  const flatRows = useMemo(() => {
+    const result = [];
+    for (const zd of groupedRows) {
+      // Total model rows that the Zone cell must span
+      const zoneRowSpan = zd.aos.reduce((s, ad) => s + ad.models.length, 0);
+      let zoneEmitted = false; // becomes true after the first row of this zone
+      for (const ad of zd.aos) {
+        const aoRowSpan = ad.models.length;
+        for (let mi = 0; mi < ad.models.length; mi++) {
+          const r = ad.models[mi];
+          const isFirstAo   = (mi === 0);
+          const isFirstZone = (!zoneEmitted && mi === 0);
+          result.push({
+            zone: zd.zone,  ao: ad.ao,
+            model: r.model,
+            leadTarget: r.leadTarget,   retailTarget: r.retailTarget,
+            leadsDelivered: r.leadsDelivered, retailsDelivered: r.retailsDelivered,
+            leadAch: r.leadAch,         retailAch: r.retailAch,
+            isFirstZone, zoneRowSpan: isFirstZone ? zoneRowSpan : 0,
+            isFirstAo,   aoRowSpan:   isFirstAo   ? aoRowSpan   : 0,
+          });
+          if (isFirstZone) zoneEmitted = true;
         }
       }
+    }
+    return result;
+  }, [groupedRows]);
+
+  // Render the pre-flattened rows: emit Zone <td> only on isFirstZone,
+  // AO <td> only on isFirstAo, then model + 6 metric cells every row.
+  const buildBodyRows = () => {
+    const rows = [];
+    for (let ri = 0; ri < flatRows.length; ri++) {
+      const fd = flatRows[ri];
+      const bg = ri % 2 === 0 ? '#fff' : '#F8FAFC';
+      const cells = [];
+
+      if (fd.isFirstZone) {
+        cells.push(ce('td', {key:'z', rowSpan:fd.zoneRowSpan, style:{
+          padding:'6px 10px', fontWeight:700, fontSize:11,
+          color:'#1E3A8A', background:'#EFF6FF',
+          borderRight:'2px solid #BFDBFE', verticalAlign:'top',
+          whiteSpace:'nowrap',
+        }}, fd.zone));
+      }
+
+      if (fd.isFirstAo) {
+        cells.push(ce('td', {key:'a', rowSpan:fd.aoRowSpan, style:{
+          padding:'6px 10px', fontSize:11, fontWeight:600,
+          color:'#1E40AF', background:'#F0F9FF',
+          borderRight:'1px solid #DBEAFE', verticalAlign:'top',
+          whiteSpace:'nowrap',
+        }}, fd.ao));
+      }
+
+      cells.push(
+        ce('td',{key:'m', style:{padding:'5px 8px',fontSize:11,whiteSpace:'nowrap',borderLeft:'1px solid #F1F5F9'}},fd.model),
+        ce('td',{key:'lt',style:{padding:'5px 8px',textAlign:'center',fontSize:11}},fmtTgt(fd.leadTarget)),
+        ce('td',{key:'rt',style:{padding:'5px 8px',textAlign:'center',fontSize:11}},fmtTgt(fd.retailTarget)),
+        ce('td',{key:'ld',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:fd.leadsDelivered>0?600:400}},Nf(fd.leadsDelivered)),
+        ce('td',{key:'rd',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:fd.retailsDelivered>0?600:400}},Nf(fd.retailsDelivered)),
+        ce('td',{key:'la',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:fd.leadAch!==null?pctColor(fd.leadAch):'#94A3B8'}},fmtAch(fd.leadAch)),
+        ce('td',{key:'ra',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:fd.retailAch!==null?pctColor(fd.retailAch):'#94A3B8'}},fmtAch(fd.retailAch)),
+      );
+
+      rows.push(ce('tr',{key:'r'+ri,style:{background:bg,borderBottom:'1px solid #F1F5F9'}},...cells));
     }
 
     // Grand total row spanning all 9 columns
