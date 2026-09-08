@@ -2613,18 +2613,19 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
         ce('table', { style:{ width:'100%', borderCollapse:'collapse', fontSize:12 } },
           ce('thead', null,
             ce('tr', null,
-              TH('dealer','Dealer','left'), TH('ao','AO','left'), TH('state','State','left'), TH('region','Region','left'),
+              TH('oemCrmId','Dealer Code','left'), TH('dealer','Dealer','left'), TH('ao','AO','left'), TH('state','State','left'), TH('region','Region','left'),
               TH('leads','Leads'), TH('retail','Retail'), TH('conv','Conv%'),
               TH('wip','WIP'), TH('dp','Direct Push'), TH('l1','L1 Nurtured'), TH('lost','Lost')
             )
           ),
           ce('tbody', null,
             sortedRows.length === 0
-              ? ce('tr', null, ce('td', { colSpan:11, style:{ textAlign:'center', padding:24, color:'#94a3b8' } }, 'No data for selected filters'))
+              ? ce('tr', null, ce('td', { colSpan:12, style:{ textAlign:'center', padding:24, color:'#94a3b8' } }, 'No data for selected filters'))
               : [
                   ...sortedRows.map((r, i) =>
                     ce('tr', { key: r.dealer+r.ao+r.state+r.region,
                       style:{ background: i%2===0?'#fff':'#f8fafc', borderBottom:'1px solid #e2e8f0' } },
+                      ce('td',{style:{padding:'7px 10px',textAlign:'left',fontFamily:'DM Mono,monospace',fontSize:11,color:'#475569',whiteSpace:'nowrap'}},r.oemCrmId||'—'),
                       ce('td',{style:{padding:'7px 10px',textAlign:'left',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},r.dealer),
                       ce('td',{style:{padding:'7px 10px',textAlign:'left'}},r.ao),
                       ce('td',{style:{padding:'7px 10px',textAlign:'left'}},r.state),
@@ -2639,7 +2640,7 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
                     )
                   ),
                   ce('tr', { key:'__totals__', style:{ background:'#1e293b', color:'#fff', fontWeight:700 } },
-                    ce('td',{colSpan:4,style:{padding:'8px 10px',textAlign:'left',fontSize:12}},'Total ('+fmt(totals.dealers)+' Dealers)'),
+                    ce('td',{colSpan:5,style:{padding:'8px 10px',textAlign:'left',fontSize:12}},'Total ('+fmt(totals.dealers)+' Dealers)'),
                     ce('td',{style:{padding:'8px 10px',textAlign:'center'}},fmt(totals.leads)),
                     ce('td',{style:{padding:'8px 10px',textAlign:'center'}},fmt(totals.retail)),
                     ce('td',{style:{padding:'8px 10px',textAlign:'center'}},pct(totals.retail,totals.leads)),
