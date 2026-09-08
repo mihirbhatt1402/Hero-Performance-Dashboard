@@ -2494,7 +2494,7 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
       const region = r.region     || 'Unknown';
       const key = dealer + '\x00' + ao + '\x00' + state + '\x00' + region;
       let e = acc.get(key);
-      if (!e) { e = { dealer, ao, state, region, oemCrmId:r.oemCrmId||'', leads:0, retail:0, wip:0, dp:0, l1:0, lost:0 }; acc.set(key, e); }
+      if (!e) { e = { dealer, ao, state, region, city:r.city||'', oemCrmId:r.oemCrmId||'', leads:0, retail:0, wip:0, dp:0, l1:0, lost:0 }; acc.set(key, e); }
       e.leads++;
       const isR = isRetailedLead(r);
       if (RT === 'dms' ? (isR && r.callType === 'dms') : RT === 'co' ? (isR && r.callType === 'co') : isR) e.retail++;
@@ -2516,8 +2516,10 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
       if (searchScope === 'ao')     return r.ao.toLowerCase().includes(q);
       if (searchScope === 'state')  return r.state.toLowerCase().includes(q);
       if (searchScope === 'code')   return (r.oemCrmId||'').toLowerCase().includes(q);
+      if (searchScope === 'city')   return (r.city||'').toLowerCase().includes(q);
       return r.dealer.toLowerCase().includes(q) || r.ao.toLowerCase().includes(q) ||
              r.state.toLowerCase().includes(q)  || r.region.toLowerCase().includes(q) ||
+             (r.city||'').toLowerCase().includes(q) ||
              (r.oemCrmId||'').toLowerCase().includes(q);
     });
   }, [allRows, search, searchScope]);
@@ -2546,8 +2548,8 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
   const arrow = col => sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   const exportCsv = () => {
-    const hdr = ['OEM CRM ID','Dealer','AO','State','Region','Leads','Retail','Conv%','WIP','Direct Push','L1 Nurtured','Lost'];
-    const aoa = [hdr, ...sortedRows.map(r => [r.oemCrmId,r.dealer,r.ao,r.state,r.region,r.leads,r.retail,pct(r.retail,r.leads),r.wip,r.dp,r.l1,r.lost])];
+    const hdr = ['OEM CRM ID','Dealer','AO','State','Region','City','Leads','Retail','Conv%','WIP','Direct Push','L1 Nurtured','Lost'];
+    const aoa = [hdr, ...sortedRows.map(r => [r.oemCrmId,r.dealer,r.ao,r.state,r.region,r.city||'',r.leads,r.retail,pct(r.retail,r.leads),r.wip,r.dp,r.l1,r.lost])];
     const csv = aoa.map(row => row.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
     const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
@@ -2586,11 +2588,11 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
       ce('div', { style:{ display:'flex', alignItems:'center', gap:8, marginBottom:12, flexWrap:'wrap' } },
         ce('input', {
           type:'text',
-          placeholder: searchScope==='dealer' ? 'Search dealer…' : searchScope==='ao' ? 'Search AO…' : searchScope==='state' ? 'Search state…' : searchScope==='code' ? 'Search dealer code…' : 'Search dealer / AO / state / region…',
+          placeholder: searchScope==='dealer' ? 'Search dealer…' : searchScope==='ao' ? 'Search AO…' : searchScope==='state' ? 'Search state…' : searchScope==='code' ? 'Search dealer code…' : searchScope==='city' ? 'Search city…' : 'Search dealer / AO / state / city…',
           value:search, onChange:e=>setSearch(e.target.value),
           style:{ flex:1, padding:'7px 11px', border:'1px solid #e2e8f0', borderRadius:6, fontSize:13, outline:'none', minWidth:160 }
         }),
-        ...[['all','All'],['code','Dealer Code'],['dealer','Dealer'],['ao','AO'],['state','State']].map(([scope, label]) =>
+        ...[['all','All'],['code','Dealer Code'],['dealer','Dealer'],['ao','AO'],['state','State'],['city','City']].map(([scope, label]) =>
           ce('button', {
             key: scope,
             onClick: () => setSearchScope(scope),
@@ -2615,14 +2617,14 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
         ce('table', { style:{ width:'100%', borderCollapse:'collapse', fontSize:12 } },
           ce('thead', null,
             ce('tr', null,
-              TH('oemCrmId','Dealer Code','left'), TH('dealer','Dealer','left'), TH('ao','AO','left'), TH('state','State','left'), TH('region','Region','left'),
+              TH('oemCrmId','Dealer Code','left'), TH('dealer','Dealer','left'), TH('ao','AO','left'), TH('state','State','left'), TH('region','Region','left'), TH('city','City','left'),
               TH('leads','Leads'), TH('retail','Retail'), TH('conv','Conv%'),
               TH('wip','WIP'), TH('dp','Direct Push'), TH('l1','L1 Nurtured'), TH('lost','Lost')
             )
           ),
           ce('tbody', null,
             sortedRows.length === 0
-              ? ce('tr', null, ce('td', { colSpan:12, style:{ textAlign:'center', padding:24, color:'#94a3b8' } }, 'No data for selected filters'))
+              ? ce('tr', null, ce('td', { colSpan:13, style:{ textAlign:'center', padding:24, color:'#94a3b8' } }, 'No data for selected filters'))
               : [
                   ...sortedRows.map((r, i) =>
                     ce('tr', { key: r.dealer+r.ao+r.state+r.region,
@@ -2632,6 +2634,7 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
                       ce('td',{style:{padding:'7px 10px',textAlign:'left'}},r.ao),
                       ce('td',{style:{padding:'7px 10px',textAlign:'left'}},r.state),
                       ce('td',{style:{padding:'7px 10px',textAlign:'left'}},r.region),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'left'}},r.city||'—'),
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontWeight:600}},fmt(r.leads)),
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontWeight:600}},fmt(r.retail)),
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',color:'#059669'}},pct(r.retail,r.leads)),
@@ -2642,7 +2645,7 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
                     )
                   ),
                   ce('tr', { key:'__totals__', style:{ background:'#1e293b', color:'#fff', fontWeight:700 } },
-                    ce('td',{colSpan:5,style:{padding:'8px 10px',textAlign:'left',fontSize:12}},'Total ('+fmt(totals.dealers)+' Dealers)'),
+                    ce('td',{colSpan:6,style:{padding:'8px 10px',textAlign:'left',fontSize:12}},'Total ('+fmt(totals.dealers)+' Dealers)'),
                     ce('td',{style:{padding:'8px 10px',textAlign:'center'}},fmt(totals.leads)),
                     ce('td',{style:{padding:'8px 10px',textAlign:'center'}},fmt(totals.retail)),
                     ce('td',{style:{padding:'8px 10px',textAlign:'center'}},pct(totals.retail,totals.leads)),
