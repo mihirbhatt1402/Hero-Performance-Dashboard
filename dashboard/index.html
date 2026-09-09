@@ -3203,11 +3203,24 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       let domQA;
       if (table) {
         const allTrs = table.querySelectorAll('tbody tr');
+        const zoneCells = table.querySelectorAll('tbody td[data-zone]');
+        const aoCells = table.querySelectorAll('tbody td[data-ao]');
+        const rowSpanUsed = zoneCells.length > 0 && [...zoneCells].some(td => parseInt(td.getAttribute('rowspan')||'1') > 1);
+        const maxZoneRowSpan = zoneCells.length > 0 ? Math.max(...[...zoneCells].map(td => parseInt(td.getAttribute('rowspan')||'1'))) : 0;
+        const blankZoneCells = allTrs.length > 0 ? [...allTrs].filter(tr => {
+          const tds = tr.querySelectorAll('td');
+          return tds.length > 0 && tds[0].textContent.trim() === '—' && !tds[0].hasAttribute('data-zone');
+        }).length : 0;
         domQA = {
           tableMounted: true,
           totalBodyRows: allTrs.length,
           zoneCount: groupedRows.size,
           aoCount: aoSummaries.size,
+          zoneCellsRendered: zoneCells.length,
+          aoCellsRendered: aoCells.length,
+          rowSpanUsed,
+          maxZoneRowSpan,
+          blankZoneCells,
         };
       } else {
         domQA = { tableMounted: false, error: '#td-detail-table not found — is the Target vs Delivery tab active?' };
@@ -3261,7 +3274,10 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       console.log('Zones:', hierarchyZones.map(z=>z.zone+' ('+z.aoCt+' AOs, '+z.modelCt+' models)'));
       console.group('[DOM QA]');
       if(domQA.tableMounted) {
-        console.log('Accordion body rows:', domQA.totalBodyRows, '  Zones:', domQA.zoneCount, '  AOs:', domQA.aoCount);
+        console.log('Body rows:', domQA.totalBodyRows, '  Zones:', domQA.zoneCount, '  AOs:', domQA.aoCount);
+        console.log('Zone cells (rowSpan):', domQA.zoneCellsRendered, '  AO cells (rowSpan):', domQA.aoCellsRendered);
+        console.log('rowSpan used:', domQA.rowSpanUsed, '  max zone rowSpan:', domQA.maxZoneRowSpan);
+        if(domQA.blankZoneCells>0) console.warn('Blank zone cells found:', domQA.blankZoneCells); else console.log('✓ No blank Zone/AO placeholder cells');
       } else { console.warn('DOM QA skipped:', domQA.error); }
       console.groupEnd();
       console.groupEnd();
@@ -3342,83 +3358,136 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     border:'1px solid rgba(255,255,255,.15)', position:'sticky', top:0, zIndex:2,
   };
 
-  // Accordion upper table body builder
+  // Upper table body builder — rowSpan zone + AO cells, no separate summary rows
   const buildBodyRows = () => {
     if (!allRows.length) return [ce('tr',{key:'nd'},ce('td',{colSpan:9,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},'No data'))];
     const result = [];
+
     for (const [zone, aoMap] of groupedRows) {
       const zIsOpen = expandedZones.has(zone);
-      const zSum = zoneSummaries.get(zone) || {lt:0,rt:0,ld:0,rd:0};
-      const zLa = zSum.lt > 0 ? zSum.ld/zSum.lt*100 : null;
-      const zRa = zSum.rt > 0 ? zSum.rd/zSum.rt*100 : null;
       const zModelCt = [...aoMap.values()].reduce((s,arr)=>s+arr.length,0);
-      result.push(ce('tr',{key:'z-'+zone,'data-zone-hdr':'1',onClick:()=>toggleZone(zone),
-        style:{cursor:'pointer',background:'#EFF6FF',borderBottom:'2px solid #BFDBFE',userSelect:'none'}},
-        ce('td',{colSpan:9,style:{padding:'8px 12px'}},
-          ce('span',{style:{fontWeight:700,fontSize:12,color:'#1E3A8A',marginRight:8}},(zIsOpen?'▾':'▸')+' '+zone),
-          ce('span',{style:{fontSize:10,color:'#6B7280',marginRight:16}},aoMap.size+' AOs · '+zModelCt+' models'),
-          ce('span',{style:{float:'right',fontSize:10,color:'#475569',fontWeight:600}},
-            'LT: '+fmtTgt(zSum.lt)+'  LD: '+Nf(zSum.ld)+'  LA: '+fmtAch(zLa)+'  |  RT: '+fmtTgt(zSum.rt)+'  RD: '+Nf(zSum.rd)+'  RA: '+fmtAch(zRa))
-        )
-      ));
-      if (!zIsOpen) continue;
+
+      if (!zIsOpen) {
+        // Collapsed zone: single compact row
+        result.push(ce('tr',{key:'z-col-'+zone,onClick:()=>toggleZone(zone),
+          style:{cursor:'pointer',background:'#EFF6FF',borderBottom:'2px solid #BFDBFE',userSelect:'none'}},
+          ce('td',{style:{padding:'8px 12px',fontWeight:700,fontSize:11,color:'#1E3A8A',
+            borderRight:'2px solid #BFDBFE',whiteSpace:'nowrap'}},
+            '▸ '+zone),
+          ce('td',{colSpan:8,style:{padding:'8px 10px',fontSize:10,color:'#6B7280'}},
+            aoMap.size+' AOs · '+zModelCt+' models')
+        ));
+        continue;
+      }
+
+      // Count visible rows for zone rowSpan
+      let zRows = 0;
+      for (const [ao, rows] of aoMap) {
+        zRows += expandedAos.has(zone+'\x00'+ao) ? rows.length : 1;
+      }
+
+      let zRendered = false;
+      const zCellStyle = {
+        padding:'8px 10px', fontWeight:700, fontSize:11, color:'#1E3A8A',
+        background:'#EFF6FF', verticalAlign:'middle', textAlign:'center',
+        cursor:'pointer', userSelect:'none', whiteSpace:'nowrap',
+        borderRight:'2px solid #BFDBFE',
+      };
+
       for (const [ao, rows] of aoMap) {
         const aoKey = zone+'\x00'+ao;
         const aIsOpen = expandedAos.has(aoKey);
-        const aSum = aoSummaries.get(aoKey) || {lt:0,rt:0,ld:0,rd:0};
-        const aLa = aSum.lt > 0 ? aSum.ld/aSum.lt*100 : null;
-        const aRa = aSum.rt > 0 ? aSum.rd/aSum.rt*100 : null;
-        result.push(ce('tr',{key:'a-'+aoKey,onClick:()=>toggleAo(aoKey),
-          style:{cursor:'pointer',background:'#F0F9FF',borderBottom:'1px solid #BFDBFE',userSelect:'none'}},
-          ce('td',{style:{padding:'6px 8px',background:'#EFF6FF'}},''),
-          ce('td',{colSpan:8,style:{padding:'6px 10px 6px 16px'}},
-            ce('span',{style:{fontWeight:600,fontSize:11,color:'#1E40AF',marginRight:8}},(aIsOpen?'▾':'▸')+' '+ao),
-            ce('span',{style:{fontSize:10,color:'#6B7280',marginRight:16}},rows.length+' models'),
-            ce('span',{style:{float:'right',fontSize:10,color:'#475569',fontWeight:600}},
-              'LT: '+fmtTgt(aSum.lt)+'  LD: '+Nf(aSum.ld)+'  LA: '+fmtAch(aLa)+'  |  RT: '+fmtTgt(aSum.rt)+'  RD: '+Nf(aSum.rd)+'  RA: '+fmtAch(aRa))
-          )
-        ));
-        if (!aIsOpen) continue;
+
+        if (!aIsOpen) {
+          // Collapsed AO: one row within expanded zone
+          const cells = [];
+          if (!zRendered) {
+            cells.push(ce('td',{key:'z','data-zone':'1',rowSpan:zRows,onClick:()=>toggleZone(zone),
+              style:zCellStyle},
+              ce('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:2}},
+                ce('span',{style:{fontSize:9,color:'#60A5FA'}},'▾'),
+                ce('span',null,zone)
+              )
+            ));
+            zRendered = true;
+          }
+          cells.push(ce('td',{key:'a',colSpan:8,onClick:()=>toggleAo(aoKey),
+            style:{padding:'7px 12px',fontSize:11,color:'#1E40AF',fontWeight:600,
+              background:'#F0F9FF',cursor:'pointer',userSelect:'none',
+              borderBottom:'1px solid #BFDBFE'}},
+            '▸ '+ao+'  ('+rows.length+' models)'
+          ));
+          result.push(ce('tr',{key:'a-col-'+aoKey},...cells));
+          continue;
+        }
+
+        // Expanded AO: model rows with AO rowSpan cell
         rows.forEach((r, idx) => {
           const bg = idx%2===0?'#fff':'#F8FAFC';
-          const bdr = {borderBottom:'1px solid #F1F5F9'};
-          result.push(ce('tr',{key:'m-'+zone+'\x00'+ao+'\x00'+r.model},
-            ce('td',{style:{padding:'5px 8px',background:bg,...bdr,fontSize:11,color:'#CBD5E1'}},'—'),
-            ce('td',{style:{padding:'5px 8px',background:bg,...bdr,fontSize:11,color:'#CBD5E1'}},'—'),
-            ce('td',{style:{padding:'5px 8px 5px 24px',fontSize:11,background:bg,...bdr}},r.model),
-            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...bdr}},fmtTgt(r.leadTarget)),
-            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...bdr}},fmtTgt(r.retailTarget)),
-            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:r.leadsDelivered>0?600:400,background:bg,...bdr}},Nf(r.leadsDelivered)),
-            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:r.retailsDelivered>0?600:400,background:bg,...bdr}},Nf(r.retailsDelivered)),
-            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.leadAch)),
-            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.retailAch)),
-          ));
+          const bdr = {borderBottom:'1px solid #EBEBF0'};
+          const cells = [];
+
+          if (!zRendered && idx === 0) {
+            cells.push(ce('td',{key:'z','data-zone':'1',rowSpan:zRows,onClick:()=>toggleZone(zone),
+              style:zCellStyle},
+              ce('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:2}},
+                ce('span',{style:{fontSize:9,color:'#60A5FA'}},'▾'),
+                ce('span',null,zone)
+              )
+            ));
+            zRendered = true;
+          }
+
+          if (idx === 0) {
+            cells.push(ce('td',{key:'a','data-ao':'1',rowSpan:rows.length,onClick:()=>toggleAo(aoKey),
+              style:{padding:'7px 10px',fontSize:11,color:'#1E40AF',fontWeight:600,
+                background:'#F0F9FF',verticalAlign:'middle',textAlign:'left',
+                cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',
+                borderRight:'1px solid #BFDBFE',minWidth:90}},
+              ce('div',{style:{display:'flex',alignItems:'center',gap:4}},
+                ce('span',{style:{fontSize:9,color:'#93C5FD'}},'▾'),
+                ce('span',null,ao)
+              )
+            ));
+          }
+
+          cells.push(
+            ce('td',{key:'m', style:{padding:'6px 8px',fontSize:11,background:bg,...bdr}},r.model),
+            ce('td',{key:'lt',style:{padding:'6px 8px',textAlign:'right',fontSize:11,background:bg,...bdr}},fmtTgt(r.leadTarget)),
+            ce('td',{key:'rt',style:{padding:'6px 8px',textAlign:'right',fontSize:11,background:bg,...bdr}},fmtTgt(r.retailTarget)),
+            ce('td',{key:'ld',style:{padding:'6px 8px',textAlign:'right',fontSize:11,fontWeight:r.leadsDelivered>0?600:400,background:bg,...bdr}},Nf(r.leadsDelivered)),
+            ce('td',{key:'rd',style:{padding:'6px 8px',textAlign:'right',fontSize:11,fontWeight:r.retailsDelivered>0?600:400,background:bg,...bdr}},Nf(r.retailsDelivered)),
+            ce('td',{key:'la',style:{padding:'6px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.leadAch)),
+            ce('td',{key:'ra',style:{padding:'6px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.retailAch)),
+          );
+          result.push(ce('tr',{key:'m-'+zone+'\x00'+ao+'\x00'+r.model},...cells));
         });
       }
     }
+
     // Grand total row
     const gtLa = summaryTotals.lt > 0 ? summaryTotals.ld/summaryTotals.lt*100 : null;
     const gtRa = summaryTotals.rt > 0 ? summaryTotals.rd/summaryTotals.rt*100 : null;
     result.push(ce('tr',{key:'grand-total',style:{background:'#1E293B',borderTop:'2px solid #334155'}},
       ce('td',{colSpan:3,style:{padding:'8px 12px',fontSize:12,color:'#fff',fontWeight:700}},'Grand Total ('+allRows.length+' models)'),
-      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,color:'#fff'}},fmtTgt(summaryTotals.lt)),
-      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,color:'#fff'}},fmtTgt(summaryTotals.rt)),
-      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:'#fff'}},Nf(summaryTotals.ld)),
-      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:'#fff'}},Nf(summaryTotals.rd)),
-      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:gtLa!==null?pctColor(gtLa):'#94A3B8'}},fmtAch(gtLa)),
-      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:gtRa!==null?pctColor(gtRa):'#94A3B8'}},fmtAch(gtRa)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,color:'#fff'}},fmtTgt(summaryTotals.lt)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,color:'#fff'}},fmtTgt(summaryTotals.rt)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,fontWeight:700,color:'#fff'}},Nf(summaryTotals.ld)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,fontWeight:700,color:'#fff'}},Nf(summaryTotals.rd)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center',fontSize:12,fontWeight:700,color:gtLa!==null?pctColor(gtLa):'#94A3B8'}},fmtAch(gtLa)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'center',fontSize:12,fontWeight:700,color:gtRa!==null?pctColor(gtRa):'#94A3B8'}},fmtAch(gtRa)),
     ));
     return result;
   };
 
   const gridHead = () => ce('thead',null,ce('tr',null,
     ce('th',{style:{...thSt,textAlign:'left',minWidth:80}},'Zone'),
-    ce('th',{style:{...thSt,textAlign:'left',minWidth:100}},'AO'),
+    ce('th',{style:{...thSt,textAlign:'left',minWidth:90}},'AO'),
     ce('th',{style:{...thSt,textAlign:'left',minWidth:120}},'Model'),
-    ce('th',{style:thSt},'Lead Target'),
-    ce('th',{style:thSt},'Retail Target'),
-    ce('th',{style:thSt},'Leads Delivered'),
-    ce('th',{style:thSt},'Retails Delivered'),
+    ce('th',{style:{...thSt,textAlign:'right'}},'Lead Target'),
+    ce('th',{style:{...thSt,textAlign:'right'}},'Retail Target'),
+    ce('th',{style:{...thSt,textAlign:'right'}},'Leads Delivered'),
+    ce('th',{style:{...thSt,textAlign:'right'}},'Retails Delivered'),
     ce('th',{style:thSt},'Lead Achievement'),
     ce('th',{style:thSt},'Retail Achievement'),
   ));
