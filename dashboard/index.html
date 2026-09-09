@@ -3203,24 +3203,39 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       let domQA;
       if (table) {
         const allTrs = table.querySelectorAll('tbody tr');
-        const zoneCells = table.querySelectorAll('tbody td[data-zone]');
-        const aoCells = table.querySelectorAll('tbody td[data-ao]');
-        const rowSpanUsed = zoneCells.length > 0 && [...zoneCells].some(td => parseInt(td.getAttribute('rowspan')||'1') > 1);
-        const maxZoneRowSpan = zoneCells.length > 0 ? Math.max(...[...zoneCells].map(td => parseInt(td.getAttribute('rowspan')||'1'))) : 0;
-        const blankZoneCells = allTrs.length > 0 ? [...allTrs].filter(tr => {
-          const tds = tr.querySelectorAll('td');
-          return tds.length > 0 && tds[0].textContent.trim() === '—' && !tds[0].hasAttribute('data-zone');
-        }).length : 0;
+        const zoneRows = table.querySelectorAll('tbody tr[data-zone-row]');
+        const aoRows = table.querySelectorAll('tbody tr[data-ao-row]');
+        // Verify zone totals == sum of AO summaries (math integrity check)
+        let zoneAoMathOk = true;
+        for (const [zone, aoMap] of groupedRows) {
+          const zSum = zoneSummaries.get(zone) || {lt:0,rt:0,ld:0,rd:0};
+          let aoLt=0, aoRd=0;
+          for (const [ao] of aoMap) {
+            const aSum = aoSummaries.get(zone+'\x00'+ao) || {lt:0,rt:0,ld:0,rd:0};
+            aoLt += aSum.lt; aoRd += aSum.rd;
+          }
+          if (Math.abs(zSum.lt - aoLt) > 0.01 || Math.abs(zSum.rd - aoRd) > 0.01) { zoneAoMathOk = false; break; }
+        }
+        // Verify AO totals == sum of model rows
+        let aoModelMathOk = true;
+        for (const [zone, aoMap] of groupedRows) {
+          for (const [ao, rows] of aoMap) {
+            const aSum = aoSummaries.get(zone+'\x00'+ao) || {lt:0,rt:0,ld:0,rd:0};
+            const mLt = rows.reduce((s,r)=>s+r.leadTarget,0);
+            const mRd = rows.reduce((s,r)=>s+r.retailsDelivered,0);
+            if (Math.abs(aSum.lt - mLt) > 0.01 || Math.abs(aSum.rd - mRd) > 0.01) { aoModelMathOk = false; break; }
+          }
+          if (!aoModelMathOk) break;
+        }
         domQA = {
           tableMounted: true,
           totalBodyRows: allTrs.length,
+          zoneRowsRendered: zoneRows.length,
+          aoRowsRendered: aoRows.length,
           zoneCount: groupedRows.size,
           aoCount: aoSummaries.size,
-          zoneCellsRendered: zoneCells.length,
-          aoCellsRendered: aoCells.length,
-          rowSpanUsed,
-          maxZoneRowSpan,
-          blankZoneCells,
+          zoneAoMathOk,
+          aoModelMathOk,
         };
       } else {
         domQA = { tableMounted: false, error: '#td-detail-table not found — is the Target vs Delivery tab active?' };
@@ -3274,10 +3289,10 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       console.log('Zones:', hierarchyZones.map(z=>z.zone+' ('+z.aoCt+' AOs, '+z.modelCt+' models)'));
       console.group('[DOM QA]');
       if(domQA.tableMounted) {
-        console.log('Body rows:', domQA.totalBodyRows, '  Zones:', domQA.zoneCount, '  AOs:', domQA.aoCount);
-        console.log('Zone cells (rowSpan):', domQA.zoneCellsRendered, '  AO cells (rowSpan):', domQA.aoCellsRendered);
-        console.log('rowSpan used:', domQA.rowSpanUsed, '  max zone rowSpan:', domQA.maxZoneRowSpan);
-        if(domQA.blankZoneCells>0) console.warn('Blank zone cells found:', domQA.blankZoneCells); else console.log('✓ No blank Zone/AO placeholder cells');
+        console.log('Body rows:', domQA.totalBodyRows, '  Zone rows:', domQA.zoneRowsRendered, '  AO rows:', domQA.aoRowsRendered);
+        console.log('Zones:', domQA.zoneCount, '  AO keys:', domQA.aoCount);
+        if(domQA.zoneAoMathOk) console.log('✓ Zone totals == sum of AO totals'); else console.warn('✗ Zone/AO total mismatch');
+        if(domQA.aoModelMathOk) console.log('✓ AO totals == sum of model rows'); else console.warn('✗ AO/model total mismatch');
       } else { console.warn('DOM QA skipped:', domQA.error); }
       console.groupEnd();
       console.groupEnd();
@@ -3358,109 +3373,81 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     border:'1px solid rgba(255,255,255,.15)', position:'sticky', top:0, zIndex:2,
   };
 
-  // Upper table body builder — rowSpan zone + AO cells, no separate summary rows
+  // Upper table body builder — hierarchical pivot: Zone summary → AO summary → Model rows
   const buildBodyRows = () => {
     if (!allRows.length) return [ce('tr',{key:'nd'},ce('td',{colSpan:9,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},'No data'))];
     const result = [];
+    const nR = {padding:'7px 8px',textAlign:'right',fontSize:11};
+    const aC = {padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:700};
+    const zBg = '#EFF6FF', aBg = '#F0F9FF';
+    const zBdr = '2px solid #BFDBFE', aBdr1 = '1px solid #BFDBFE';
 
     for (const [zone, aoMap] of groupedRows) {
       const zIsOpen = expandedZones.has(zone);
-      const zModelCt = [...aoMap.values()].reduce((s,arr)=>s+arr.length,0);
+      const zSum = zoneSummaries.get(zone) || {lt:0,rt:0,ld:0,rd:0};
+      const zLa = zSum.lt > 0 ? zSum.ld/zSum.lt*100 : null;
+      const zRa = zSum.rt > 0 ? zSum.rd/zSum.rt*100 : null;
+      const zbb = {borderBottom: zIsOpen ? aBdr1 : zBdr};
 
-      if (!zIsOpen) {
-        // Collapsed zone: single compact row
-        result.push(ce('tr',{key:'z-col-'+zone,onClick:()=>toggleZone(zone),
-          style:{cursor:'pointer',background:'#EFF6FF',borderBottom:'2px solid #BFDBFE',userSelect:'none'}},
-          ce('td',{style:{padding:'8px 12px',fontWeight:700,fontSize:11,color:'#1E3A8A',
-            borderRight:'2px solid #BFDBFE',whiteSpace:'nowrap'}},
-            '▸ '+zone),
-          ce('td',{colSpan:8,style:{padding:'8px 10px',fontSize:10,color:'#6B7280'}},
-            aoMap.size+' AOs · '+zModelCt+' models')
-        ));
-        continue;
-      }
+      // Zone summary row — always visible, shows zone-level aggregated values
+      result.push(ce('tr',{key:'z-'+zone,'data-zone-row':'1',onClick:()=>toggleZone(zone),
+        style:{cursor:'pointer',background:zBg,userSelect:'none'}},
+        ce('td',{style:{padding:'7px 10px',fontWeight:700,fontSize:11,color:'#1E3A8A',
+          whiteSpace:'nowrap',borderRight:aBdr1,...zbb}},
+          (zIsOpen?'▾ ':'▸ ')+zone),
+        ce('td',{style:{padding:'7px 6px',textAlign:'center',color:'#94A3B8',fontSize:10,...zbb}},'—'),
+        ce('td',{style:{padding:'7px 6px',textAlign:'center',color:'#94A3B8',fontSize:10,...zbb}},'—'),
+        ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},fmtTgt(zSum.lt)),
+        ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},fmtTgt(zSum.rt)),
+        ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},Nf(zSum.ld)),
+        ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},Nf(zSum.rd)),
+        ce('td',{style:{...aC,color:zLa!==null?pctColor(zLa):'#94A3B8',...zbb}},fmtAch(zLa)),
+        ce('td',{style:{...aC,color:zRa!==null?pctColor(zRa):'#94A3B8',...zbb}},fmtAch(zRa)),
+      ));
 
-      // Count visible rows for zone rowSpan
-      let zRows = 0;
-      for (const [ao, rows] of aoMap) {
-        zRows += expandedAos.has(zone+'\x00'+ao) ? rows.length : 1;
-      }
-
-      let zRendered = false;
-      const zCellStyle = {
-        padding:'8px 10px', fontWeight:700, fontSize:11, color:'#1E3A8A',
-        background:'#EFF6FF', verticalAlign:'middle', textAlign:'center',
-        cursor:'pointer', userSelect:'none', whiteSpace:'nowrap',
-        borderRight:'2px solid #BFDBFE',
-      };
+      if (!zIsOpen) continue;
 
       for (const [ao, rows] of aoMap) {
         const aoKey = zone+'\x00'+ao;
         const aIsOpen = expandedAos.has(aoKey);
+        const aSum = aoSummaries.get(aoKey) || {lt:0,rt:0,ld:0,rd:0};
+        const aLa = aSum.lt > 0 ? aSum.ld/aSum.lt*100 : null;
+        const aRa = aSum.rt > 0 ? aSum.rd/aSum.rt*100 : null;
+        const abb = {borderBottom: aIsOpen ? '1px solid #E0F0FF' : aBdr1};
 
-        if (!aIsOpen) {
-          // Collapsed AO: one row within expanded zone
-          const cells = [];
-          if (!zRendered) {
-            cells.push(ce('td',{key:'z','data-zone':'1',rowSpan:zRows,onClick:()=>toggleZone(zone),
-              style:zCellStyle},
-              ce('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:2}},
-                ce('span',{style:{fontSize:9,color:'#60A5FA'}},'▾'),
-                ce('span',null,zone)
-              )
-            ));
-            zRendered = true;
-          }
-          cells.push(ce('td',{key:'a',colSpan:8,onClick:()=>toggleAo(aoKey),
-            style:{padding:'7px 12px',fontSize:11,color:'#1E40AF',fontWeight:600,
-              background:'#F0F9FF',cursor:'pointer',userSelect:'none',
-              borderBottom:'1px solid #BFDBFE'}},
-            '▸ '+ao+'  ('+rows.length+' models)'
-          ));
-          result.push(ce('tr',{key:'a-col-'+aoKey},...cells));
-          continue;
-        }
+        // AO summary row — shows AO-level aggregated values
+        result.push(ce('tr',{key:'a-'+aoKey,'data-ao-row':'1',onClick:()=>toggleAo(aoKey),
+          style:{cursor:'pointer',background:aBg,userSelect:'none'}},
+          ce('td',{style:{padding:'6px 8px',borderRight:aBdr1,...abb}},''),
+          ce('td',{style:{padding:'6px 10px',fontWeight:600,fontSize:11,color:'#1E40AF',
+            whiteSpace:'nowrap',borderRight:aBdr1,...abb}},
+            (aIsOpen?'▾ ':'▸ ')+ao),
+          ce('td',{style:{padding:'6px 6px',textAlign:'center',color:'#94A3B8',fontSize:10,...abb}},'—'),
+          ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},fmtTgt(aSum.lt)),
+          ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},fmtTgt(aSum.rt)),
+          ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},Nf(aSum.ld)),
+          ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},Nf(aSum.rd)),
+          ce('td',{style:{...aC,color:aLa!==null?pctColor(aLa):'#94A3B8',...abb}},fmtAch(aLa)),
+          ce('td',{style:{...aC,color:aRa!==null?pctColor(aRa):'#94A3B8',...abb}},fmtAch(aRa)),
+        ));
 
-        // Expanded AO: model rows with AO rowSpan cell
+        if (!aIsOpen) continue;
+
+        // Model rows
         rows.forEach((r, idx) => {
           const bg = idx%2===0?'#fff':'#F8FAFC';
-          const bdr = {borderBottom:'1px solid #EBEBF0'};
-          const cells = [];
-
-          if (!zRendered && idx === 0) {
-            cells.push(ce('td',{key:'z','data-zone':'1',rowSpan:zRows,onClick:()=>toggleZone(zone),
-              style:zCellStyle},
-              ce('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:2}},
-                ce('span',{style:{fontSize:9,color:'#60A5FA'}},'▾'),
-                ce('span',null,zone)
-              )
-            ));
-            zRendered = true;
-          }
-
-          if (idx === 0) {
-            cells.push(ce('td',{key:'a','data-ao':'1',rowSpan:rows.length,onClick:()=>toggleAo(aoKey),
-              style:{padding:'7px 10px',fontSize:11,color:'#1E40AF',fontWeight:600,
-                background:'#F0F9FF',verticalAlign:'middle',textAlign:'left',
-                cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',
-                borderRight:'1px solid #BFDBFE',minWidth:90}},
-              ce('div',{style:{display:'flex',alignItems:'center',gap:4}},
-                ce('span',{style:{fontSize:9,color:'#93C5FD'}},'▾'),
-                ce('span',null,ao)
-              )
-            ));
-          }
-
-          cells.push(
-            ce('td',{key:'m', style:{padding:'6px 8px',fontSize:11,background:bg,...bdr}},r.model),
-            ce('td',{key:'lt',style:{padding:'6px 8px',textAlign:'right',fontSize:11,background:bg,...bdr}},fmtTgt(r.leadTarget)),
-            ce('td',{key:'rt',style:{padding:'6px 8px',textAlign:'right',fontSize:11,background:bg,...bdr}},fmtTgt(r.retailTarget)),
-            ce('td',{key:'ld',style:{padding:'6px 8px',textAlign:'right',fontSize:11,fontWeight:r.leadsDelivered>0?600:400,background:bg,...bdr}},Nf(r.leadsDelivered)),
-            ce('td',{key:'rd',style:{padding:'6px 8px',textAlign:'right',fontSize:11,fontWeight:r.retailsDelivered>0?600:400,background:bg,...bdr}},Nf(r.retailsDelivered)),
-            ce('td',{key:'la',style:{padding:'6px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.leadAch)),
-            ce('td',{key:'ra',style:{padding:'6px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.retailAch)),
-          );
-          result.push(ce('tr',{key:'m-'+zone+'\x00'+ao+'\x00'+r.model},...cells));
+          const mbb = {borderBottom:'1px solid #EBEBF0'};
+          result.push(ce('tr',{key:'m-'+zone+'\x00'+ao+'\x00'+r.model},
+            ce('td',{style:{padding:'5px 8px',background:bg,borderRight:'1px solid #F0F0F4',...mbb}},''),
+            ce('td',{style:{padding:'5px 8px',background:bg,borderRight:'1px solid #F0F0F4',...mbb}},''),
+            ce('td',{style:{padding:'5px 8px 5px 14px',fontSize:11,background:bg,...mbb}},r.model),
+            ce('td',{style:{...nR,background:bg,...mbb}},fmtTgt(r.leadTarget)),
+            ce('td',{style:{...nR,background:bg,...mbb}},fmtTgt(r.retailTarget)),
+            ce('td',{style:{...nR,fontWeight:r.leadsDelivered>0?600:400,background:bg,...mbb}},Nf(r.leadsDelivered)),
+            ce('td',{style:{...nR,fontWeight:r.retailsDelivered>0?600:400,background:bg,...mbb}},Nf(r.retailsDelivered)),
+            ce('td',{style:{...aC,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...mbb}},fmtAch(r.leadAch)),
+            ce('td',{style:{...aC,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...mbb}},fmtAch(r.retailAch)),
+          ));
         });
       }
     }
