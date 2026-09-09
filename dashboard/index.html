@@ -2990,7 +2990,10 @@ const TD_MONTH_FULL = {'Aug\'26':'Aug\'2026','Sep\'26':'Sep\'2026','Oct\'26':'Oc
 
 const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters, RT, rawJoined, leadsMode, viewerMode }) {
   const [tdMonth, setTdMonth] = useState('all');
+  const [expandedZones, setExpandedZones] = useState(() => new Set());
+  const [expandedAos, setExpandedAos] = useState(() => new Set());
   const [flatSearch, setFlatSearch] = useState('');
+  const [flatScope, setFlatScope] = useState('All');
 
   // Aggregate deliveries from rawJoined, then build per-(AO×Model) target+delivery rows.
   const allRows = useMemo(() => {
@@ -3079,35 +3082,69 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   const sumLa = summaryTotals.lt > 0 ? summaryTotals.ld/summaryTotals.lt*100 : null;
   const sumRa = summaryTotals.rt > 0 ? summaryTotals.rd/summaryTotals.rt*100 : null;
 
-  // Shared sort comparator: zone → ao → model
+  // Shared sort: zone → ao → model
   const rowSort = (a,b) => {
     const zc = a.zone.localeCompare(b.zone); if (zc !== 0) return zc;
     const ac = a.ao.localeCompare(b.ao);     if (ac !== 0) return ac;
     return a.model.localeCompare(b.model);
   };
 
-  // First hierarchy grid: all allRows sorted, no text filter (rowSpan, no accordion)
-  const firstGridRows = useMemo(() => [...allRows].sort(rowSort), [allRows]);
+  // Zone→AO→[rows] map for accordion upper table
+  const groupedRows = useMemo(() => {
+    const gm = new Map();
+    const sorted = [...allRows].sort(rowSort);
+    for (const r of sorted) {
+      if (!gm.has(r.zone)) gm.set(r.zone, new Map());
+      const aoMap = gm.get(r.zone);
+      if (!aoMap.has(r.ao)) aoMap.set(r.ao, []);
+      aoMap.get(r.ao).push(r);
+    }
+    return gm;
+  }, [allRows]);
 
-  // Second (flat) grid: filtered by flatSearch, sorted
+  const zoneSummaries = useMemo(() => {
+    const m = new Map();
+    for (const r of allRows) {
+      if (!m.has(r.zone)) m.set(r.zone, {lt:0,rt:0,ld:0,rd:0});
+      const s = m.get(r.zone);
+      s.lt+=r.leadTarget; s.rt+=r.retailTarget; s.ld+=r.leadsDelivered; s.rd+=r.retailsDelivered;
+    }
+    return m;
+  }, [allRows]);
+
+  const aoSummaries = useMemo(() => {
+    const m = new Map();
+    for (const r of allRows) {
+      const k = r.zone+'\x00'+r.ao;
+      if (!m.has(k)) m.set(k, {lt:0,rt:0,ld:0,rd:0});
+      const s = m.get(k);
+      s.lt+=r.leadTarget; s.rt+=r.retailTarget; s.ld+=r.leadsDelivered; s.rd+=r.retailsDelivered;
+    }
+    return m;
+  }, [allRows]);
+
+  // Flat rows for Geo & Dealer-style lower table
   const flatRows = useMemo(() => {
     const q = flatSearch.trim().toLowerCase();
-    const src = q ? allRows.filter(r =>
-      r.zone.toLowerCase().includes(q) ||
-      r.ao.toLowerCase().includes(q) ||
-      r.model.toLowerCase().includes(q)
-    ) : allRows;
+    let src = allRows;
+    if (q) {
+      src = allRows.filter(r => {
+        if (flatScope === 'Zone')  return r.zone.toLowerCase().includes(q);
+        if (flatScope === 'AO')   return r.ao.toLowerCase().includes(q);
+        if (flatScope === 'Model') return r.model.toLowerCase().includes(q);
+        return r.zone.toLowerCase().includes(q)||r.ao.toLowerCase().includes(q)||r.model.toLowerCase().includes(q);
+      });
+    }
     return [...src].sort(rowSort);
-  }, [allRows, flatSearch]);
+  }, [allRows, flatSearch, flatScope]);
 
-  // QA function exposed on window
+  // QA function — declared after all memos to satisfy TDZ
   useEffect(() => {
     window.heroTargetVsDeliveryQA = function() {
       const eps = 0.001;
-      // Mirror the allRows selM/target logic so QA reflects actual computation
       const tdMonthFull = tdMonth !== 'all' ? TD_MONTH_FULL[tdMonth] : null;
       const gf = filters.months;
-      let effectiveDeliveryMonths; // what selM resolves to (for display)
+      let effectiveDeliveryMonths;
       if (tdMonthFull) {
         if (gf && gf.size > 0) {
           effectiveDeliveryMonths = gf.has(tdMonthFull) ? [tdMonthFull] : [];
@@ -3115,13 +3152,11 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           effectiveDeliveryMonths = [tdMonthFull];
         }
       } else {
-        effectiveDeliveryMonths = (gf && gf.size > 0) ? [...gf] : null; // null = all hero months
+        effectiveDeliveryMonths = (gf && gf.size > 0) ? [...gf] : null;
       }
       const targetPeriod = tdMonth !== 'all'
         ? tdMonthFull + ' ('+HERO_MONTH_TARGET_CFG[tdMonthFull]?.q+'÷'+HERO_MONTH_TARGET_CFG[tdMonthFull]?.div+')'
         : 'All (Q2+Q3+Q4 full annual)';
-
-      // 4-case filter interaction matrix
       const caseMatrix = [
         { case:'1 (Global=Aug+Sep, TD=Sep\'26)', globalFilter:'Aug\'2026,Sep\'2026', tdM:'Sep\'26',
           targetPeriod:'Sep\'2026 (Q2÷2)', deliveryMonths:'Sep\'2026 (∩ of {Aug,Sep} ∩ {Sep})' },
@@ -3154,7 +3189,6 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       const gtLt=summaryTotals.lt, gtRt=summaryTotals.rt, gtLd=summaryTotals.ld, gtRd=summaryTotals.rd;
       const gtLa=gtLt>0?gtLd/gtLt*100:null;
       const gtRa=gtRt>0?gtRd/gtRt*100:null;
-
       let unmatchedAOs=[], unmatchedModels=[];
       if(rawJoined&&rawJoined.length){
         const knownUnresolvable=['Lucknow','Patna','Not Available'];
@@ -3165,41 +3199,28 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         const targetModels=[...new Set(Object.values(HERO_TARGET_DATA).flatMap(a=>Object.keys(a.models)))].sort();
         unmatchedModels=normModels.filter(m=>m&&!targetModels.includes(m));
       }
-
-      // ── DOM-level inspection (rowSpan grids, no accordion) ────────────────
       const table = document.getElementById('td-detail-table');
       let domQA;
       if (table) {
         const allTrs = table.querySelectorAll('tbody tr');
-        const zoneCells = table.querySelectorAll('tbody td[rowspan]');
         domQA = {
           tableMounted: true,
           totalBodyRows: allTrs.length,
-          QA_bodyRowsMatchFirstGrid: allTrs.length === firstGridRows.length,
-          rowSpanCellsPresent: zoneCells.length > 0,
+          zoneCount: groupedRows.size,
+          aoCount: aoSummaries.size,
         };
       } else {
-        domQA = { tableMounted: false, error: '#td-detail-table not in DOM — is the Target vs Delivery tab active?' };
+        domQA = { tableMounted: false, error: '#td-detail-table not found — is the Target vs Delivery tab active?' };
       }
-
-      // derive zone hierarchy from firstGridRows
-      const zoneMap = new Map();
-      for (const r of firstGridRows) {
-        if (!zoneMap.has(r.zone)) zoneMap.set(r.zone, new Map());
-        const aoMap = zoneMap.get(r.zone);
-        if (!aoMap.has(r.ao)) aoMap.set(r.ao, 0);
-        aoMap.set(r.ao, aoMap.get(r.ao)+1);
-      }
-      const hierarchyZones = [...zoneMap.entries()].map(([zone, aoMap]) => ({
-        zone, aoCt: aoMap.size, modelCt: [...aoMap.values()].reduce((s,v)=>s+v,0)
+      const hierarchyZones = [...groupedRows.entries()].map(([zone, aoMap]) => ({
+        zone, aoCt: aoMap.size, modelCt: [...aoMap.values()].reduce((s,arr)=>s+arr.length,0)
       }));
-
       const result = {
         selectedTdMonth: tdMonth,
         effectiveDeliveryMonths: effectiveDeliveryMonths===null ? 'All hero months (Aug–Mar)' : effectiveDeliveryMonths.length===0 ? '∅ (global/TD month conflict → 0 delivery)' : effectiveDeliveryMonths.join(', '),
         targetPeriod,
         globalMonthsRibbon: selM ? selM.join(', ') : '(empty / all)',
-        firstGridRows: firstGridRows.length,
+        totalModelRows: allRows.length,
         flatGridRows: flatRows.length,
         summaryTotals,
         leadAchievement: gtLa!==null?gtLa.toFixed(1)+'%':'—',
@@ -3215,15 +3236,11 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           'AllMonths=Q2+Q3+Q4_LT': Math.abs(allM.lt-allQ)<eps,
           'AllMonths=Q2+Q3+Q4_RT': Math.abs(allM.rt-(q2.rt+q3.rt+q4.rt))<eps,
         },
-        monthlyTargetCheck: selM ? (()=>{
-          const cm=monthlySum(selM);
-          return{selectedMonthsLT:cm.lt,selectedMonthsRT:cm.rt};
-        })() : {totalQ2LT:q2.lt,totalQ3LT:q3.lt,totalQ4LT:q4.lt,combinedLT:allQ},
-        unmatchedAOs,
-        unmatchedModels,
+        monthlyTargetCheck: selM ? (()=>{const cm=monthlySum(selM);return{selectedMonthsLT:cm.lt,selectedMonthsRT:cm.rt};})()
+          : {totalQ2LT:q2.lt,totalQ3LT:q3.lt,totalQ4LT:q4.lt,combinedLT:allQ},
+        unmatchedAOs, unmatchedModels,
         zeroTargetRows: zeroTgtRows,
-        hierarchyZones,
-        domQA,
+        hierarchyZones, domQA,
       };
       console.group('[HERO Target vs Delivery QA]');
       console.log('Tab month filter (tdMonth):', result.selectedTdMonth);
@@ -3233,49 +3250,56 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       console.group('[Filter Interaction Matrix]');
       caseMatrix.forEach(c => console.log('Case '+c.case+' → target: '+c.targetPeriod+', delivery: '+c.deliveryMonths));
       console.groupEnd();
-      console.log('First grid rows:', result.firstGridRows, '  Flat grid rows:', result.flatGridRows);
+      console.log('Total model rows:', result.totalModelRows, '  Flat rows:', result.flatGridRows);
       console.log('Summary totals:', result.summaryTotals);
       console.log('Lead Achievement:', result.leadAchievement, '  Retail Achievement:', result.retailAchievement);
       console.log('Reconciliation:', result.reconciliation);
       console.log('Monthly target check:', result.monthlyTargetCheck);
-      if(unmatchedAOs.length) console.warn('Unmatched AOs:', unmatchedAOs);
-      else console.log('✓ All AOs matched');
-      if(unmatchedModels.length) console.warn('Unmatched models:', unmatchedModels);
-      else console.log('✓ All models matched');
+      if(unmatchedAOs.length) console.warn('Unmatched AOs:', unmatchedAOs); else console.log('✓ All AOs matched');
+      if(unmatchedModels.length) console.warn('Unmatched models:', unmatchedModels); else console.log('✓ All models matched');
       console.log('Zero-target rows:', zeroTgtRows);
-      console.log('Hierarchy zones:', result.hierarchyZones);
+      console.log('Zones:', hierarchyZones.map(z=>z.zone+' ('+z.aoCt+' AOs, '+z.modelCt+' models)'));
       console.group('[DOM QA]');
       if(domQA.tableMounted) {
-        console.log('Body rows:', domQA.totalBodyRows, domQA.QA_bodyRowsMatchFirstGrid?'✓':'✗ expected '+firstGridRows.length);
-        console.log('rowSpan cells present:', domQA.rowSpanCellsPresent?'✓':'✗');
-      } else {
-        console.warn('DOM QA skipped:', domQA.error);
-      }
+        console.log('Accordion body rows:', domQA.totalBodyRows, '  Zones:', domQA.zoneCount, '  AOs:', domQA.aoCount);
+      } else { console.warn('DOM QA skipped:', domQA.error); }
       console.groupEnd();
       console.groupEnd();
       return result;
     };
-  }, [allRows, summaryTotals, filters, rawJoined, tdMonth, firstGridRows, flatRows]);
+  }, [allRows, summaryTotals, filters, rawJoined, tdMonth, groupedRows, flatRows, aoSummaries]);
 
-  const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
-  // target=0 → '—'; target>0, delivery=0 → '0' (not —)
-  const fmtTgt = n => n===0?'—':Nf(Math.round(n));
-  const fmtAch = p => p===null?'—':p.toFixed(1)+'%';
-  const selMonthLabel = tdMonth !== 'all'
-    ? tdMonth
-    : (filters.months && filters.months.size > 0) ? [...filters.months].join(', ') : 'All Months (Aug–Mar)';
+  // Accordion callbacks
+  const toggleZone = useCallback(zone => {
+    setExpandedZones(prev => {
+      const next = new Set(prev);
+      if (next.has(zone)) next.delete(zone); else next.add(zone);
+      return next;
+    });
+  }, []);
 
-  // Header styles
-  const thSt = {
-    background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',
-    color:'#fff', fontWeight:700, fontSize:10, padding:'9px 8px',
-    whiteSpace:'nowrap', textAlign:'center', userSelect:'none',
-  };
-  const sumThSt = {
-    background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',
-    color:'#fff', fontWeight:700, fontSize:11, padding:'9px 14px',
-    textAlign:'center', whiteSpace:'nowrap',
-  };
+  const toggleAo = useCallback(aoKey => {
+    setExpandedAos(prev => {
+      const next = new Set(prev);
+      if (next.has(aoKey)) next.delete(aoKey); else next.add(aoKey);
+      return next;
+    });
+  }, []);
+
+  const expandAll = useCallback(() => {
+    const zones = new Set(groupedRows.keys());
+    const aos = new Set();
+    for (const [zone, aoMap] of groupedRows) {
+      for (const ao of aoMap.keys()) aos.add(zone+'\x00'+ao);
+    }
+    setExpandedZones(zones);
+    setExpandedAos(aos);
+  }, [groupedRows]);
+
+  const collapseAll = useCallback(() => {
+    setExpandedZones(new Set());
+    setExpandedAos(new Set());
+  }, []);
 
   const onFlatExport = useCallback(() => {
     const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
@@ -3293,55 +3317,98 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     a.click();
   }, [flatRows, tdMonth]);
 
-  // Shared rowSpan renderer used by both hierarchy grids
-  const buildRowSpanRows = (rows, emptyMsg) => {
-    if (!rows.length) return [
-      ce('tr',{key:'nd'},ce('td',{colSpan:9,
-        style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},
-        emptyMsg || 'No data'))
-    ];
-    const zSpanMap = new Map(), aSpanMap = new Map();
-    let i = 0;
-    while (i < rows.length) {
-      const s = i; const z = rows[i].zone;
-      while (i < rows.length && rows[i].zone === z) i++;
-      zSpanMap.set(s, i - s);
+  const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
+  const fmtTgt = n => n===0?'—':Nf(Math.round(n));
+  const fmtAch = p => p===null?'—':p.toFixed(1)+'%';
+  const selMonthLabel = tdMonth !== 'all'
+    ? tdMonth
+    : (filters.months && filters.months.size > 0) ? [...filters.months].join(', ') : 'All Months (Aug–Mar)';
+
+  const thSt = {
+    background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',
+    color:'#fff', fontWeight:700, fontSize:10, padding:'9px 8px',
+    whiteSpace:'nowrap', textAlign:'center', userSelect:'none',
+  };
+  const sumThSt = {
+    background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',
+    color:'#fff', fontWeight:700, fontSize:11, padding:'9px 14px',
+    textAlign:'center', whiteSpace:'nowrap',
+  };
+  // Geo & Dealer-style header for flat lower table
+  const flatThSt = {
+    textAlign:'center', padding:'9px 10px', background:'#1E3A8A',
+    color:'#fff', fontWeight:700, fontSize:9.5, textTransform:'uppercase',
+    letterSpacing:'.08em', userSelect:'none', whiteSpace:'nowrap',
+    border:'1px solid rgba(255,255,255,.15)', position:'sticky', top:0, zIndex:2,
+  };
+
+  // Accordion upper table body builder
+  const buildBodyRows = () => {
+    if (!allRows.length) return [ce('tr',{key:'nd'},ce('td',{colSpan:9,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},'No data'))];
+    const result = [];
+    for (const [zone, aoMap] of groupedRows) {
+      const zIsOpen = expandedZones.has(zone);
+      const zSum = zoneSummaries.get(zone) || {lt:0,rt:0,ld:0,rd:0};
+      const zLa = zSum.lt > 0 ? zSum.ld/zSum.lt*100 : null;
+      const zRa = zSum.rt > 0 ? zSum.rd/zSum.rt*100 : null;
+      const zModelCt = [...aoMap.values()].reduce((s,arr)=>s+arr.length,0);
+      result.push(ce('tr',{key:'z-'+zone,'data-zone-hdr':'1',onClick:()=>toggleZone(zone),
+        style:{cursor:'pointer',background:'#EFF6FF',borderBottom:'2px solid #BFDBFE',userSelect:'none'}},
+        ce('td',{colSpan:9,style:{padding:'8px 12px'}},
+          ce('span',{style:{fontWeight:700,fontSize:12,color:'#1E3A8A',marginRight:8}},(zIsOpen?'▾':'▸')+' '+zone),
+          ce('span',{style:{fontSize:10,color:'#6B7280',marginRight:16}},aoMap.size+' AOs · '+zModelCt+' models'),
+          ce('span',{style:{float:'right',fontSize:10,color:'#475569',fontWeight:600}},
+            'LT: '+fmtTgt(zSum.lt)+'  LD: '+Nf(zSum.ld)+'  LA: '+fmtAch(zLa)+'  |  RT: '+fmtTgt(zSum.rt)+'  RD: '+Nf(zSum.rd)+'  RA: '+fmtAch(zRa))
+        )
+      ));
+      if (!zIsOpen) continue;
+      for (const [ao, rows] of aoMap) {
+        const aoKey = zone+'\x00'+ao;
+        const aIsOpen = expandedAos.has(aoKey);
+        const aSum = aoSummaries.get(aoKey) || {lt:0,rt:0,ld:0,rd:0};
+        const aLa = aSum.lt > 0 ? aSum.ld/aSum.lt*100 : null;
+        const aRa = aSum.rt > 0 ? aSum.rd/aSum.rt*100 : null;
+        result.push(ce('tr',{key:'a-'+aoKey,onClick:()=>toggleAo(aoKey),
+          style:{cursor:'pointer',background:'#F0F9FF',borderBottom:'1px solid #BFDBFE',userSelect:'none'}},
+          ce('td',{style:{padding:'6px 8px',background:'#EFF6FF'}},''),
+          ce('td',{colSpan:8,style:{padding:'6px 10px 6px 16px'}},
+            ce('span',{style:{fontWeight:600,fontSize:11,color:'#1E40AF',marginRight:8}},(aIsOpen?'▾':'▸')+' '+ao),
+            ce('span',{style:{fontSize:10,color:'#6B7280',marginRight:16}},rows.length+' models'),
+            ce('span',{style:{float:'right',fontSize:10,color:'#475569',fontWeight:600}},
+              'LT: '+fmtTgt(aSum.lt)+'  LD: '+Nf(aSum.ld)+'  LA: '+fmtAch(aLa)+'  |  RT: '+fmtTgt(aSum.rt)+'  RD: '+Nf(aSum.rd)+'  RA: '+fmtAch(aRa))
+          )
+        ));
+        if (!aIsOpen) continue;
+        rows.forEach((r, idx) => {
+          const bg = idx%2===0?'#fff':'#F8FAFC';
+          const bdr = {borderBottom:'1px solid #F1F5F9'};
+          result.push(ce('tr',{key:'m-'+zone+'\x00'+ao+'\x00'+r.model},
+            ce('td',{style:{padding:'5px 8px',background:bg,...bdr,fontSize:11,color:'#CBD5E1'}},'—'),
+            ce('td',{style:{padding:'5px 8px',background:bg,...bdr,fontSize:11,color:'#CBD5E1'}},'—'),
+            ce('td',{style:{padding:'5px 8px 5px 24px',fontSize:11,background:bg,...bdr}},r.model),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...bdr}},fmtTgt(r.leadTarget)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...bdr}},fmtTgt(r.retailTarget)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:r.leadsDelivered>0?600:400,background:bg,...bdr}},Nf(r.leadsDelivered)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:r.retailsDelivered>0?600:400,background:bg,...bdr}},Nf(r.retailsDelivered)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.leadAch)),
+            ce('td',{style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...bdr}},fmtAch(r.retailAch)),
+          ));
+        });
+      }
     }
-    i = 0;
-    while (i < rows.length) {
-      const s = i; const k = rows[i].zone+'\x00'+rows[i].ao;
-      while (i < rows.length && rows[i].zone+'\x00'+rows[i].ao === k) i++;
-      aSpanMap.set(s, i - s);
-    }
-    const zBdr = {borderRight:'2px solid #BFDBFE',borderBottom:'1px solid #E2E8F0'};
-    const aBdr = {borderRight:'1px solid #BFDBFE',borderBottom:'1px solid #E2E8F0'};
-    const cBdr = {borderBottom:'1px solid #F1F5F9'};
-    return rows.map((r, idx) => {
-      const zSpan = zSpanMap.get(idx);
-      const aSpan = aSpanMap.get(idx);
-      const bg = idx % 2 === 0 ? '#fff' : '#F8FAFC';
-      const cells = [];
-      if (zSpan !== undefined) cells.push(ce('td',{key:'z',rowSpan:zSpan,
-        style:{padding:'7px 10px',verticalAlign:'middle',textAlign:'left',fontWeight:700,
-          fontSize:11,color:'#1E3A8A',background:'#EFF6FF',whiteSpace:'nowrap',...zBdr}},r.zone));
-      if (aSpan !== undefined) cells.push(ce('td',{key:'a',rowSpan:aSpan,
-        style:{padding:'7px 10px',verticalAlign:'middle',textAlign:'left',fontWeight:600,
-          fontSize:11,color:'#1E40AF',background:'#F0F9FF',whiteSpace:'nowrap',...aBdr}},r.ao));
-      cells.push(
-        ce('td',{key:'m',style:{padding:'5px 8px',fontSize:11,background:bg,...cBdr}},r.model),
-        ce('td',{key:'lt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...cBdr}},fmtTgt(r.leadTarget)),
-        ce('td',{key:'rt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...cBdr}},fmtTgt(r.retailTarget)),
-        ce('td',{key:'ld',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
-          fontWeight:r.leadsDelivered>0?600:400,background:bg,...cBdr}},Nf(r.leadsDelivered)),
-        ce('td',{key:'rd',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
-          fontWeight:r.retailsDelivered>0?600:400,background:bg,...cBdr}},Nf(r.retailsDelivered)),
-        ce('td',{key:'la',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
-          color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...cBdr}},fmtAch(r.leadAch)),
-        ce('td',{key:'ra',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
-          color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...cBdr}},fmtAch(r.retailAch)),
-      );
-      return ce('tr',{key:r.zone+'\x00'+r.ao+'\x00'+r.model+'\x00'+idx},cells);
-    });
+    // Grand total row
+    const gtLa = summaryTotals.lt > 0 ? summaryTotals.ld/summaryTotals.lt*100 : null;
+    const gtRa = summaryTotals.rt > 0 ? summaryTotals.rd/summaryTotals.rt*100 : null;
+    result.push(ce('tr',{key:'grand-total',style:{background:'#1E293B',borderTop:'2px solid #334155'}},
+      ce('td',{colSpan:3,style:{padding:'8px 12px',fontSize:12,color:'#fff',fontWeight:700}},'Grand Total ('+allRows.length+' models)'),
+      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,color:'#fff'}},fmtTgt(summaryTotals.lt)),
+      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,color:'#fff'}},fmtTgt(summaryTotals.rt)),
+      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:'#fff'}},Nf(summaryTotals.ld)),
+      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:'#fff'}},Nf(summaryTotals.rd)),
+      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:gtLa!==null?pctColor(gtLa):'#94A3B8'}},fmtAch(gtLa)),
+      ce('td',{style:{padding:'8px',textAlign:'center',fontSize:12,fontWeight:700,color:gtRa!==null?pctColor(gtRa):'#94A3B8'}},fmtAch(gtRa)),
+    ));
+    return result;
   };
 
   const gridHead = () => ce('thead',null,ce('tr',null,
@@ -3356,11 +3423,33 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     ce('th',{style:thSt},'Retail Achievement'),
   ));
 
+  const flatGridHead = () => ce('thead',null,ce('tr',null,
+    ce('th',{style:{...flatThSt,textAlign:'left',minWidth:80}},'Zone'),
+    ce('th',{style:{...flatThSt,textAlign:'left',minWidth:100}},'AO'),
+    ce('th',{style:{...flatThSt,textAlign:'left',minWidth:120}},'Model'),
+    ce('th',{style:flatThSt},'Lead Target'),
+    ce('th',{style:flatThSt},'Retail Target'),
+    ce('th',{style:flatThSt},'Leads Delivered'),
+    ce('th',{style:flatThSt},'Retails Delivered'),
+    ce('th',{style:flatThSt},'Lead Achievement'),
+    ce('th',{style:flatThSt},'Retail Achievement'),
+  ));
+
+  // Flat lower table totals
+  const flatTotals = flatRows.reduce((acc,r) => ({
+    lt:acc.lt+r.leadTarget, rt:acc.rt+r.retailTarget,
+    ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered
+  }), {lt:0,rt:0,ld:0,rd:0});
+  const ftLa = flatTotals.lt > 0 ? flatTotals.ld/flatTotals.lt*100 : null;
+  const ftRa = flatTotals.rt > 0 ? flatTotals.rd/flatTotals.rt*100 : null;
+
   return ce('div',{className:'fade-up'},
 
-    // Controls bar: month filter buttons + model count (no accordion controls)
-    ce('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:14}},
-      ce('span',{style:{fontSize:10,color:'#6B7280',fontWeight:600,marginRight:4}},firstGridRows.length+' model rows'),
+    // Controls bar: Expand All | Collapse All | separator | month buttons | model count
+    ce('div',{style:{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:14}},
+      ce('button',{onClick:expandAll,style:{padding:'4px 10px',borderRadius:14,background:'#1E3A8A',color:'#fff',border:'none',fontSize:9.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}},'+Expand All'),
+      ce('button',{onClick:collapseAll,style:{padding:'4px 10px',borderRadius:14,background:'#475569',color:'#fff',border:'none',fontSize:9.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}},'-Collapse All'),
+      ce('div',{style:{width:1,height:16,background:'#CBD5E1',margin:'0 2px'}}),
       TD_MONTH_BTNS.map(lbl =>
         ce('button',{key:lbl,onClick:()=>setTdMonth(lbl),style:{
           padding:'4px 9px',borderRadius:14,
@@ -3369,6 +3458,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           border:'none',fontSize:9.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
         }},lbl==='all'?'All':lbl)
       ),
+      ce('span',{style:{fontSize:10,color:'#6B7280',fontWeight:500,marginLeft:4}},allRows.length+' models'),
     ),
 
     // Summary grid
@@ -3390,55 +3480,86 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         ce('tbody',null,
           ce('tr',{style:{background:'#fff'}},
             ce('td',{style:{padding:'9px 14px',fontWeight:700,color:'#374151',fontSize:12}},'Leads'),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},
-              summaryTotals.lt>0?Nf(Math.round(summaryTotals.lt)):'—'),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},
-              Nf(summaryTotals.ld)),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,
-              color:sumLa!==null?pctColor(sumLa):'#94A3B8'}},fmtAch(sumLa)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.lt>0?Nf(Math.round(summaryTotals.lt)):'—'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.ld)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,color:sumLa!==null?pctColor(sumLa):'#94A3B8'}},fmtAch(sumLa)),
           ),
           ce('tr',{style:{background:'#F8FAFC'}},
             ce('td',{style:{padding:'9px 14px',fontWeight:700,color:'#374151',fontSize:12}},'Retail'),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},
-              summaryTotals.rt>0?Nf(Math.round(summaryTotals.rt)):'—'),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},
-              Nf(summaryTotals.rd)),
-            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,
-              color:sumRa!==null?pctColor(sumRa):'#94A3B8'}},fmtAch(sumRa)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12}},summaryTotals.rt>0?Nf(Math.round(summaryTotals.rt)):'—'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.rd)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,color:sumRa!==null?pctColor(sumRa):'#94A3B8'}},fmtAch(sumRa)),
           ),
         )
       )
     ),
 
-    // First hierarchy grid: rowSpan Zone→AO→Model (no search, no export — spec E)
-    ce('div',{style:{overflowX:'auto',borderRadius:10,marginBottom:20,
-      boxShadow:'0 2px 12px rgba(0,0,0,.08)',background:'#fff'}},
-      ce('table',{id:'td-detail-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto'}},
-        gridHead(),
-        ce('tbody',null,buildRowSpanRows(firstGridRows, null))
+    // UPPER TABLE: Accordion Zone → AO → Model
+    ce('div',{className:'card',style:{padding:'16px 18px',marginBottom:20}},
+      ce('div',{style:{fontWeight:700,fontSize:11,color:'#1E3A8A',letterSpacing:'.04em',marginBottom:10,textTransform:'uppercase'}},'Target vs Delivery — Zone × AO × Model'),
+      ce('div',{style:{overflowX:'auto',borderRadius:8,boxShadow:'0 1px 6px rgba(0,0,0,.08)'}},
+        ce('table',{id:'td-detail-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto'}},
+          gridHead(),
+          ce('tbody',null,...buildBodyRows())
+        )
       )
     ),
 
-    // Second hierarchy grid: rowSpan Zone→AO→Model, searchable + exportable (spec F)
-    ce('div',{style:{marginTop:20}},
+    // LOWER TABLE: Geo & Dealer-style flat table
+    ce('div',{className:'card',style:{padding:'16px 18px'}},
       ce('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:10}},
-        ce('div',{style:{fontWeight:700,fontSize:11,color:'#1E3A8A',letterSpacing:'.04em',whiteSpace:'nowrap'}},
-          'FLAT VIEW — ZONE × AO × MODEL'),
-        ce('input',{type:'text',placeholder:'Search Zone / AO / Model…',value:flatSearch,
-          onChange:e=>setFlatSearch(e.target.value),
-          style:{padding:'5px 12px',borderRadius:16,border:'1px solid #CBD5E1',
-            fontSize:11,fontFamily:'inherit',width:220,outline:'none'}}),
-        ce('span',{style:{fontSize:10,color:'#6B7280'}},flatRows.length+' rows'),
+        ce('div',{style:{fontWeight:700,fontSize:11,color:'#1E3A8A',letterSpacing:'.04em',whiteSpace:'nowrap'}},'FLAT VIEW — ZONE × AO × MODEL'),
+        ce('div',{style:{flex:1,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',minWidth:0}},
+          ce('input',{type:'text',placeholder:'Search Zone / AO / Model…',value:flatSearch,
+            onChange:e=>setFlatSearch(e.target.value),
+            style:{flex:1,padding:'7px 11px',border:'1px solid #e2e8f0',borderRadius:6,
+              fontSize:13,outline:'none',minWidth:160,fontFamily:'inherit'}}),
+          ['All','Zone','AO','Model'].map(s=>
+            ce('button',{key:s,onClick:()=>setFlatScope(s),style:{
+              padding:'7px 11px',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',border:'none',
+              background:flatScope===s?'#1E3A8A':'#E2E8F0',color:flatScope===s?'#fff':'#374151',
+            }},s)
+          ),
+        ),
+        ce('span',{style:{fontSize:10,color:'#6B7280',whiteSpace:'nowrap'}},flatRows.length+' rows'),
         !viewerMode&&ce('button',{onClick:onFlatExport,style:{
-          marginLeft:'auto',padding:'5px 14px',borderRadius:16,background:'#9A3412',
-          color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
+          padding:'7px 13px',borderRadius:6,background:'#9A3412',color:'#fff',
+          border:'none',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
         }},'⬇ Export CSV'),
       ),
-      ce('div',{style:{overflowX:'auto',borderRadius:10,
-        boxShadow:'0 2px 12px rgba(0,0,0,.08)',background:'#fff'}},
+      ce('div',{style:{overflowX:'auto',borderRadius:8,boxShadow:'0 1px 6px rgba(0,0,0,.08)',maxHeight:520,overflowY:'auto'}},
         ce('table',{id:'td-flat-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
-          gridHead(),
-          ce('tbody',null,buildRowSpanRows(flatRows, flatSearch.trim() ? 'No matches for "'+flatSearch.trim()+'"' : null))
+          flatGridHead(),
+          ce('tbody',null,
+            flatRows.length === 0
+              ? ce('tr',{key:'nd'},ce('td',{colSpan:9,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},
+                  flatSearch.trim()?'No matches for "'+flatSearch.trim()+'"':'No data'))
+              : [
+                  ...flatRows.map((r,idx) => {
+                    const bg = idx%2===0?'#fff':'#f8fafc';
+                    return ce('tr',{key:r.zone+'\x00'+r.ao+'\x00'+r.model+'\x00'+idx,style:{borderBottom:'1px solid #e2e8f0'}},
+                      ce('td',{style:{padding:'7px 10px',fontSize:11,background:bg,textAlign:'left'}},r.zone),
+                      ce('td',{style:{padding:'7px 10px',fontSize:11,background:bg,textAlign:'left'}},r.ao),
+                      ce('td',{style:{padding:'7px 10px',fontSize:11,background:bg,textAlign:'left'}},r.model),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,background:bg}},fmtTgt(r.leadTarget)),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,background:bg}},fmtTgt(r.retailTarget)),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:r.leadsDelivered>0?600:400,background:bg}},Nf(r.leadsDelivered)),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:r.retailsDelivered>0?600:400,background:bg}},Nf(r.retailsDelivered)),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg}},fmtAch(r.leadAch)),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg}},fmtAch(r.retailAch)),
+                    );
+                  }),
+                  ce('tr',{key:'flat-total',style:{background:'#1e293b',borderTop:'2px solid #334155'}},
+                    ce('td',{colSpan:3,style:{padding:'7px 10px',fontSize:11,color:'#fff',fontWeight:700}},'Total ('+flatRows.length+' rows)'),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,color:'#fff'}},fmtTgt(flatTotals.lt)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,color:'#fff'}},fmtTgt(flatTotals.rt)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff'}},Nf(flatTotals.ld)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff'}},Nf(flatTotals.rd)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftLa!==null?pctColor(ftLa):'#94A3B8'}},fmtAch(ftLa)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftRa!==null?pctColor(ftRa):'#94A3B8'}},fmtAch(ftRa)),
+                  ),
+                ]
+          )
         )
       )
     )
