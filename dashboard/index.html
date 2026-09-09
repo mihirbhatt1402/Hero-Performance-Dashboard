@@ -2984,15 +2984,43 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
             LEADS DELIVERED | RETAILS DELIVERED | LEAD ACHIEVEMENT | RETAIL ACHIEVEMENT
    Monthly targets: Q2÷2 (Aug/Sep), Q3÷3 (Oct/Nov/Dec), Q4÷3 (Jan/Feb/Mar).
    ════════════════════════════════════════════════════════════════════ */
+// Local month-filter for this tab (short label → full 4-digit label used internally)
+const TD_MONTH_BTNS = ['all','Aug\'26','Sep\'26','Oct\'26','Nov\'26','Dec\'26','Jan\'27','Feb\'27','Mar\'27'];
+const TD_MONTH_FULL = {'Aug\'26':'Aug\'2026','Sep\'26':'Sep\'2026','Oct\'26':'Oct\'2026','Nov\'26':'Nov\'2026','Dec\'26':'Dec\'2026','Jan\'27':'Jan\'2027','Feb\'27':'Feb\'2027','Mar\'27':'Mar\'2027'};
+
 const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters, RT, rawJoined, leadsMode, viewerMode }) {
   const [search, setSearch] = React.useState('');
   const [expandedZones, setExpandedZones] = useState(new Set());
   const [expandedAos,   setExpandedAos]   = useState(new Set());
+  const [tdMonth, setTdMonth] = useState('all');
+  const [flatSearch, setFlatSearch] = useState('');
 
   // Aggregate deliveries from rawJoined, then build per-(AO×Model) target+delivery rows.
   const allRows = useMemo(() => {
     if (!rawJoined || !rawJoined.length) return [];
-    const selM = (filters.months && filters.months.size > 0) ? filters.months : null;
+    const tdMonthFull = tdMonth !== 'all' ? TD_MONTH_FULL[tdMonth] : null;
+    // DELIVERY months = intersection of tdMonth (if specific) and global months ribbon.
+    // Target period is determined solely by the tdMonth button (see target section below),
+    // so the global ribbon never shrinks the target — it only affects which leads are counted.
+    //
+    //  tdMonth specific + global active → intersection (Case 1: Aug+Sep ∩ Sep = Sep;
+    //                                                   Case 2: Aug ∩ Sep = ∅ → 0 delivery)
+    //  tdMonth specific + global empty  → tdMonth only  (Case 3)
+    //  tdMonth='all'   + global active  → global filter (Case 4)
+    //  tdMonth='all'   + global empty   → all hero months
+    let selM;
+    if (tdMonthFull) {
+      const gf = filters.months;
+      if (gf && gf.size > 0) {
+        // Intersection: count delivery only when global filter also includes the selected month
+        selM = gf.has(tdMonthFull) ? new Set([tdMonthFull]) : new Set();
+      } else {
+        selM = new Set([tdMonthFull]);
+      }
+    } else {
+      selM = (filters.months && filters.months.size > 0) ? filters.months : null;
+    }
+
     const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf } = filters;
     const allS   = !sf  || sf.size  === 0;
     const allLT  = !ltf || ltf.size === 0;
@@ -3024,13 +3052,14 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     for (const [ao, aoData] of Object.entries(HERO_TARGET_DATA)) {
       for (const [model, qData] of Object.entries(aoData.models)) {
         let lt = 0, rt = 0;
-        if (selM !== null) {
-          for (const m of selM) {
-            const mc = HERO_MONTH_TARGET_CFG[m];
-            if (!mc) continue;
-            if (qData[mc.q]) { lt += qData[mc.q][0] / mc.div; rt += qData[mc.q][1] / mc.div; }
-          }
+        if (tdMonth !== 'all') {
+          // Target period = the selected month's quota (Q÷divisor).
+          // The global months ribbon does NOT affect target allocation.
+          const mc = HERO_MONTH_TARGET_CFG[tdMonthFull];
+          if (mc && qData[mc.q]) { lt = qData[mc.q][0] / mc.div; rt = qData[mc.q][1] / mc.div; }
         } else {
+          // tdMonth='All': full annual target regardless of global months ribbon.
+          // (Case 4: global=Sep, tdMonth=All → target=Q2+Q3+Q4, delivery=Sep only)
           for (const q of ['Q2','Q3','Q4']) {
             if (qData[q]) { lt += qData[q][0]; rt += qData[q][1]; }
           }
@@ -3043,7 +3072,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       }
     }
     return rows;
-  }, [rawJoined, filters, leadsMode, RT]);
+  }, [rawJoined, filters, leadsMode, RT, tdMonth]);
 
   // Summary totals (not affected by search box)
   const summaryTotals = useMemo(() => allRows.reduce((acc,r) => ({
@@ -3090,8 +3119,36 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   // QA function exposed on window
   useEffect(() => {
     window.heroTargetVsDeliveryQA = function() {
-      const selM = (filters.months && filters.months.size > 0) ? [...filters.months] : null;
       const eps = 0.001;
+      // Mirror the allRows selM/target logic so QA reflects actual computation
+      const tdMonthFull = tdMonth !== 'all' ? TD_MONTH_FULL[tdMonth] : null;
+      const gf = filters.months;
+      let effectiveDeliveryMonths; // what selM resolves to (for display)
+      if (tdMonthFull) {
+        if (gf && gf.size > 0) {
+          effectiveDeliveryMonths = gf.has(tdMonthFull) ? [tdMonthFull] : [];
+        } else {
+          effectiveDeliveryMonths = [tdMonthFull];
+        }
+      } else {
+        effectiveDeliveryMonths = (gf && gf.size > 0) ? [...gf] : null; // null = all hero months
+      }
+      const targetPeriod = tdMonth !== 'all'
+        ? tdMonthFull + ' ('+HERO_MONTH_TARGET_CFG[tdMonthFull]?.q+'÷'+HERO_MONTH_TARGET_CFG[tdMonthFull]?.div+')'
+        : 'All (Q2+Q3+Q4 full annual)';
+
+      // 4-case filter interaction matrix
+      const caseMatrix = [
+        { case:'1 (Global=Aug+Sep, TD=Sep\'26)', globalFilter:'Aug\'2026,Sep\'2026', tdM:'Sep\'26',
+          targetPeriod:'Sep\'2026 (Q2÷2)', deliveryMonths:'Sep\'2026 (∩ of {Aug,Sep} ∩ {Sep})' },
+        { case:'2 (Global=Aug, TD=Sep\'26)', globalFilter:'Aug\'2026', tdM:'Sep\'26',
+          targetPeriod:'Sep\'2026 (Q2÷2)', deliveryMonths:'∅ → 0 delivery (Aug∩Sep=empty)' },
+        { case:'3 (Global=All, TD=Sep\'26)', globalFilter:'(empty)', tdM:'Sep\'26',
+          targetPeriod:'Sep\'2026 (Q2÷2)', deliveryMonths:'Sep\'2026 (no global → use TD)' },
+        { case:'4 (Global=Sep, TD=All)', globalFilter:'Sep\'2026', tdM:'all',
+          targetPeriod:'Full Q2+Q3+Q4 annual', deliveryMonths:'Sep\'2026 (global filter applies)' },
+      ];
+      const selM = (gf && gf.size > 0) ? [...gf] : null;
       function monthlySum(months) {
         let lt=0,rt=0;
         for (const [,aoData] of Object.entries(HERO_TARGET_DATA))
@@ -3144,12 +3201,17 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       }
 
       const result = {
-        selectedMonth: selM ? selM.join(', ') : 'All (Aug–Mar)',
+        selectedTdMonth: tdMonth,
+        effectiveDeliveryMonths: effectiveDeliveryMonths===null ? 'All hero months (Aug–Mar)' : effectiveDeliveryMonths.length===0 ? '∅ (global/TD month conflict → 0 delivery)' : effectiveDeliveryMonths.join(', '),
+        targetPeriod,
+        globalMonthsRibbon: selM ? selM.join(', ') : '(empty / all)',
         totalDetailRows: totalModelCount,
+        flatGridRows: flatRows.length,
         summaryTotals,
         grandTotals,
         leadAchievement: gtLa!==null?gtLa.toFixed(1)+'%':'—',
         retailAchievement: gtRa!==null?gtRa.toFixed(1)+'%':'—',
+        filterInteractionMatrix: caseMatrix,
         reconciliation: {
           'Aug+Sep=Q2_LT': Math.abs(aug.lt+sep.lt-q2.lt)<eps,
           'Aug+Sep=Q2_RT': Math.abs(aug.rt+sep.rt-q2.rt)<eps,
@@ -3171,7 +3233,14 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         domQA,
       };
       console.group('[HERO Target vs Delivery QA]');
-      console.log('Month:', result.selectedMonth);
+      console.log('Tab month filter (tdMonth):', result.selectedTdMonth);
+      console.log('Global months ribbon:', result.globalMonthsRibbon);
+      console.log('Target period:', result.targetPeriod);
+      console.log('Effective delivery months:', result.effectiveDeliveryMonths);
+      console.group('[Filter Interaction Matrix]');
+      caseMatrix.forEach(c => console.log('Case '+c.case+' → target: '+c.targetPeriod+', delivery: '+c.deliveryMonths));
+      console.groupEnd();
+      console.log('Flat grid rows:', result.flatGridRows);
       console.log('Detail rows:', result.totalDetailRows);
       console.log('Summary totals:', result.summaryTotals);
       console.log('Grand totals:', result.grandTotals);
@@ -3197,13 +3266,15 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       console.groupEnd();
       return result;
     };
-  }, [allRows, summaryTotals, grandTotals, groupedRows, filters, rawJoined, totalModelCount, expandedZones, expandedAos]);
+  }, [allRows, summaryTotals, grandTotals, groupedRows, filters, rawJoined, totalModelCount, expandedZones, expandedAos, tdMonth, flatRows]);
 
   const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
   // target=0 → '—'; target>0, delivery=0 → '0' (not —)
   const fmtTgt = n => n===0?'—':Nf(Math.round(n));
   const fmtAch = p => p===null?'—':p.toFixed(1)+'%';
-  const selMonthLabel = (filters.months && filters.months.size > 0) ? [...filters.months].join(', ') : 'All Months (Aug–Mar)';
+  const selMonthLabel = tdMonth !== 'all'
+    ? tdMonth
+    : (filters.months && filters.months.size > 0) ? [...filters.months].join(', ') : 'All Months (Aug–Mar)';
 
   const onExport = useCallback(() => {
     const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
@@ -3284,6 +3355,39 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     setExpandedZones(new Set());
     setExpandedAos(new Set());
   }, []);
+
+  // Flat view (second grid): Zone→AO→Model sorted, filtered by flatSearch
+  const flatRows = useMemo(() => {
+    const q = flatSearch.trim().toLowerCase();
+    const src = q ? allRows.filter(r =>
+      r.zone.toLowerCase().includes(q) ||
+      r.ao.toLowerCase().includes(q) ||
+      r.model.toLowerCase().includes(q)
+    ) : allRows;
+    return [...src].sort((a,b) => {
+      const zc = a.zone.localeCompare(b.zone);
+      if (zc !== 0) return zc;
+      const ac = a.ao.localeCompare(b.ao);
+      if (ac !== 0) return ac;
+      return a.model.localeCompare(b.model);
+    });
+  }, [allRows, flatSearch]);
+
+  const onFlatExport = useCallback(() => {
+    const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
+    const csvRows = flatRows.map(r =>
+      [r.zone, r.ao, r.model,
+        r.leadTarget>0?r.leadTarget.toFixed(4):0,
+        r.retailTarget>0?r.retailTarget.toFixed(4):0,
+        r.leadsDelivered, r.retailsDelivered,
+        r.leadTarget>0&&r.leadAch!==null?r.leadAch.toFixed(1):'',
+        r.retailTarget>0&&r.retailAch!==null?r.retailAch.toFixed(1):''].join(',')
+    );
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([hdr+csvRows.join('\n')],{type:'text/csv'}));
+    a.download = 'Hero_TvD_Flat_'+(tdMonth==='all'?'AllMonths':tdMonth.replace(/'/g,''))+'.csv';
+    a.click();
+  }, [flatRows, tdMonth]);
 
   // Render accordion rows
   const buildBodyRows = () => {
@@ -3381,15 +3485,76 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     return rows;
   };
 
+  // Render flat (rowSpan) grid rows for second grid
+  const buildFlatBodyRows = () => {
+    if (!flatRows.length) return [
+      ce('tr',{key:'nd'},ce('td',{colSpan:9,
+        style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},
+        flatSearch ? 'No matches for "'+flatSearch+'"' : 'No data'))
+    ];
+    // Precompute zone/ao span starts via two linear passes
+    const zSpanMap = new Map(), aSpanMap = new Map();
+    let i = 0;
+    while (i < flatRows.length) {
+      const s = i; const z = flatRows[i].zone;
+      while (i < flatRows.length && flatRows[i].zone === z) i++;
+      zSpanMap.set(s, i - s);
+    }
+    i = 0;
+    while (i < flatRows.length) {
+      const s = i; const k = flatRows[i].zone+'\x00'+flatRows[i].ao;
+      while (i < flatRows.length && flatRows[i].zone+'\x00'+flatRows[i].ao === k) i++;
+      aSpanMap.set(s, i - s);
+    }
+    const zBdr = {borderRight:'2px solid #BFDBFE',borderBottom:'1px solid #E2E8F0'};
+    const aBdr = {borderRight:'1px solid #BFDBFE',borderBottom:'1px solid #E2E8F0'};
+    const cBdr = {borderBottom:'1px solid #F1F5F9'};
+    return flatRows.map((r, idx) => {
+      const zSpan = zSpanMap.get(idx);
+      const aSpan = aSpanMap.get(idx);
+      const bg = idx % 2 === 0 ? '#fff' : '#F8FAFC';
+      const cells = [];
+      if (zSpan !== undefined) cells.push(ce('td',{key:'z',rowSpan:zSpan,
+        style:{padding:'7px 10px',verticalAlign:'middle',textAlign:'left',fontWeight:700,
+          fontSize:11,color:'#1E3A8A',background:'#EFF6FF',whiteSpace:'nowrap',...zBdr}},r.zone));
+      if (aSpan !== undefined) cells.push(ce('td',{key:'a',rowSpan:aSpan,
+        style:{padding:'7px 10px',verticalAlign:'middle',textAlign:'left',fontWeight:600,
+          fontSize:11,color:'#1E40AF',background:'#F0F9FF',whiteSpace:'nowrap',...aBdr}},r.ao));
+      cells.push(
+        ce('td',{key:'m',style:{padding:'5px 8px',fontSize:11,background:bg,...cBdr}},r.model),
+        ce('td',{key:'lt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...cBdr}},fmtTgt(r.leadTarget)),
+        ce('td',{key:'rt',style:{padding:'5px 8px',textAlign:'center',fontSize:11,background:bg,...cBdr}},fmtTgt(r.retailTarget)),
+        ce('td',{key:'ld',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+          fontWeight:r.leadsDelivered>0?600:400,background:bg,...cBdr}},Nf(r.leadsDelivered)),
+        ce('td',{key:'rd',style:{padding:'5px 8px',textAlign:'center',fontSize:11,
+          fontWeight:r.retailsDelivered>0?600:400,background:bg,...cBdr}},Nf(r.retailsDelivered)),
+        ce('td',{key:'la',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+          color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...cBdr}},fmtAch(r.leadAch)),
+        ce('td',{key:'ra',style:{padding:'5px 8px',textAlign:'center',fontSize:11,fontWeight:700,
+          color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...cBdr}},fmtAch(r.retailAch)),
+      );
+      return ce('tr',{key:r.zone+'\x00'+r.ao+'\x00'+r.model},...cells);
+    });
+  };
+
   return ce('div',{className:'fade-up'},
 
-    // Controls: search + model count + Expand/Collapse + Export CSV
-    ce('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:14}},
+    // Controls: search + model count + month filter buttons + Expand/Collapse + Export CSV
+    ce('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:14}},
       ce('input',{type:'text',placeholder:'Search Zone / AO / Model…',value:search,
         onChange:e=>setSearch(e.target.value),
         style:{padding:'5px 12px',borderRadius:16,border:'1px solid #CBD5E1',
-          fontSize:11,fontFamily:'inherit',width:220,outline:'none'}}),
+          fontSize:11,fontFamily:'inherit',width:200,outline:'none'}}),
       ce('span',{style:{fontSize:10,color:'#6B7280'}},totalModelCount+' models'),
+      // Month filter buttons
+      ...TD_MONTH_BTNS.map(lbl =>
+        ce('button',{key:lbl,onClick:()=>setTdMonth(lbl),style:{
+          padding:'4px 9px',borderRadius:14,
+          background:tdMonth===lbl?'#1E3A8A':'#E2E8F0',
+          color:tdMonth===lbl?'#fff':'#374151',
+          border:'none',fontSize:9.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
+        }},lbl==='all'?'All':lbl)
+      ),
       ce('button',{onClick:expandAll,style:{
         padding:'5px 12px',borderRadius:16,background:'#1E40AF',
         color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
@@ -3459,6 +3624,40 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           ce('th',{style:thSt},'Retail Achievement'),
         )),
         ce('tbody',null,...buildBodyRows())
+      )
+    ),
+
+    // Flat (rowSpan) grid — Zone×AO×Model, searchable, exportable
+    ce('div',{style:{marginTop:20}},
+      ce('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:10}},
+        ce('div',{style:{fontWeight:700,fontSize:11,color:'#1E3A8A',letterSpacing:'.04em',whiteSpace:'nowrap'}},
+          'FLAT VIEW — ZONE × AO × MODEL'),
+        ce('input',{type:'text',placeholder:'Search Zone / AO / Model…',value:flatSearch,
+          onChange:e=>setFlatSearch(e.target.value),
+          style:{padding:'5px 12px',borderRadius:16,border:'1px solid #CBD5E1',
+            fontSize:11,fontFamily:'inherit',width:220,outline:'none'}}),
+        ce('span',{style:{fontSize:10,color:'#6B7280'}},flatRows.length+' rows'),
+        !viewerMode&&ce('button',{onClick:onFlatExport,style:{
+          marginLeft:'auto',padding:'5px 14px',borderRadius:16,background:'#9A3412',
+          color:'#fff',border:'none',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
+        }},'⬇ Export CSV'),
+      ),
+      ce('div',{style:{overflowX:'auto',borderRadius:10,
+        boxShadow:'0 2px 12px rgba(0,0,0,.08)',background:'#fff'}},
+        ce('table',{id:'td-flat-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
+          ce('thead',null,ce('tr',null,
+            ce('th',{style:{...thSt,textAlign:'left',minWidth:80}},'Zone'),
+            ce('th',{style:{...thSt,textAlign:'left',minWidth:100}},'AO'),
+            ce('th',{style:{...thSt,textAlign:'left',minWidth:120}},'Model'),
+            ce('th',{style:thSt},'Lead Target'),
+            ce('th',{style:thSt},'Retail Target'),
+            ce('th',{style:thSt},'Leads Delivered'),
+            ce('th',{style:thSt},'Retails Delivered'),
+            ce('th',{style:thSt},'Lead Achievement'),
+            ce('th',{style:thSt},'Retail Achievement'),
+          )),
+          ce('tbody',null,...buildFlatBodyRows())
+        )
       )
     )
   );
