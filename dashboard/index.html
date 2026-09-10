@@ -1381,6 +1381,53 @@ function exportDetailedCsv(rawJoined, filters, RT, leadsMode, filename, monthOve
   exportCsv(aoa, filename);
 }
 
+function exportLeadCategDetailedCsv(rawJoined, filters, RT, leadsMode, filename, monthOverride) {
+  if (!rawJoined || !rawJoined.length) return;
+  const { months:mf, sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf } = filters;
+  const allM   = !mf  || mf.size  === 0;
+  const allS   = !sf  || sf.size  === 0;
+  const allLT  = !ltf || ltf.size === 0;
+  const allMdl = !mdf || mdf.size === 0;
+  const allSt  = !stf || stf.size === 0;
+  const allCity= !cf  || cf.size  === 0;
+  const fmtD   = d => (d instanceof Date && !isNaN(d.getTime())) ? formatRetailDate(d) : '';
+  const hdr = ['encrypt_mobile_number','id_verified_lead','opty_id','Date','Lead_Month',
+    'brand','model','verified_dealer','dealerId','oem_crm_id','City','State',
+    'Dealer_Name','enquiryId','utm_campaign','lead_type','Medium','Status_Name',
+    'purchasedModel','performanceMonth','Call Type','Retail_Attribution_Date',
+    'Lead Categorisation'];
+  const aoa = [hdr];
+  for (const r of rawJoined) {
+    const effMonth = (leadsMode === 'update' && r.isBooked && r.booking_month) ? r.booking_month : r.lead_month;
+    if (monthOverride) {
+      if (effMonth !== monthOverride) continue;
+    } else if (!allM) {
+      if (mf === FILTER_CLEARED) continue;
+      if (!mf.has(effMonth)) continue;
+    }
+    if (!allS)   { if (sf  === FILTER_CLEARED) continue; if (!sf.has(r.source))  continue; }
+    if (!allLT)  { if (ltf === FILTER_CLEARED) continue; if (!ltf.has(r.lt))     continue; }
+    if (!allMdl) { if (mdf === FILTER_CLEARED) continue; if (!mdf.has(r.model))  continue; }
+    if (!allSt)  { if (stf === FILTER_CLEARED) continue; if (!stf.has(r.state))  continue; }
+    if (!allCity){ if (cf  === FILTER_CLEARED) continue; if (!cf.has(r.city))    continue; }
+    const statusName = r.statusName || '';
+    const isRA = String(statusName).trim().toLowerCase() === 'retail attribution';
+    aoa.push([
+      r.encryptMobile||'', r.idVerifiedLead||'', r.opty_id,
+      fmtD(r.leadDate), r.lead_month, r.brand||'', r.model,
+      r.verifiedDealer||'', r.dealerId||'', r.oemCrmId||'',
+      r.city, r.state, r.dealerName||'', r.enquiryId||'', r.utmCampaign||'',
+      r.lt, r.source, statusName,
+      isRA ? (r.purchasedModel||'') : '',
+      isRA ? (r.booking_month||'') : '',
+      isRA ? (r.callType||'') : '',
+      isRA ? fmtD(r.retailDate) : '',
+      r.webId || 'Unknown',
+    ]);
+  }
+  exportCsv(aoa, filename);
+}
+
 function makeAggCsv(agg, dimLabel, filename) {
   if (!agg) return;
   const srcKeys = Object.keys(agg.grandSrc || {});
@@ -2288,7 +2335,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onD
 /* ════════════════════════════════════════════════════════════════════
    WEB ID TAB  (Direct Push / L1 Nurtured dimension)
    ════════════════════════════════════════════════════════════════════ */
-const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDetailedCsv }) {
+const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDetailedCsv, rawJoined, leadsMode, viewerMode }) {
   const { maps, wm: wmRaw, wuniv: wunivRaw, cwm: cwmRaw } = data;
   const wuniv = wunivRaw || [];
   const cwm   = cwmRaw   || [];
@@ -2334,12 +2381,15 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
     return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, M),
-        ce(CsvBtn, { onClick:()=>{
-          const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
-          sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-          aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
-          exportCsv(aoa,'Hero_WebID_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
-        }})
+        ce('div',{style:{display:'flex',gap:0}},
+          ce(CsvBtn, { onClick:()=>{
+            const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
+            sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+            aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
+            exportCsv(aoa,'Hero_WebID_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
+          }}),
+          rawJoined && ce(DetailedCsvBtn, { onClick:()=>exportLeadCategDetailedCsv(rawJoined,filters,RT,leadsMode,'Hero_LeadCateg_Detailed_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv',M) })
+        )
       ),
       ce('div', { className:'scroll-x' },
         ce('table', null,
@@ -2417,12 +2467,15 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Web ID Summary'),
-        ce(CsvBtn, { onClick:()=>{
-          const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
-          crossMonthTotals.sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-          aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
-          exportCsv(aoa,'Hero_WebID_AllMonths.csv');
-        }})
+        ce('div',{style:{display:'flex',gap:0}},
+          ce(CsvBtn, { onClick:()=>{
+            const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
+            crossMonthTotals.sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
+            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
+            exportCsv(aoa,'Hero_WebID_AllMonths.csv');
+          }}),
+          rawJoined && ce(DetailedCsvBtn, { onClick:()=>exportLeadCategDetailedCsv(rawJoined,filters,RT,leadsMode,'Hero_LeadCateg_Detailed_AllMonths.csv',null) })
+        )
       ),
       ce('div', { className:'scroll-x' },
         ce('table', null,
@@ -5427,7 +5480,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     switch(tab){
       case 'overview':    return ce(OverviewTab,      props);
       case 'source':      return ce(SourceTab,        props);
-      case 'webid':       return ce(WebIdTab,         props);
+      case 'webid':       return ce(WebIdTab,         {...props,rawJoined,leadsMode});
       case 'ltxsrc':      return ce(LTSourceTab,      props);
       case 'modelxsrc':   return ce(ModelSourceTab,   props);
       case 'statexsrc':   return ce(StateSourceTab,   {...props,rawJoined,leadsMode});
