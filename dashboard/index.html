@@ -3894,6 +3894,49 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
    rdm row format:  [mi, is_same, si, sti, ci, lti, lm_idx, cnt_all, cnt_dms, cnt_co, _]
    rdmx row format: [mi, pur_mi, is_same, si, sti, ci, lti, lm_idx, cnt_all, cnt_dms, cnt_co, _]
    ════════════════════════════════════════════════════════════════════ */
+// Purchased-model name → Retail Dispersion display category
+const DISP_PM_CAT = {
+  'Hero Destini 110':'Hero Destini Family',
+  'Hero Destini 125':'Hero Destini Family',
+  'Hero Destini Prime':'Hero Destini Family',
+  'Hero Glamour':'Hero Glamour Family',
+  'Hero Glamour X 125':'Hero Glamour Family',
+  'Hero Karizma XMR':'Hero Karizma XMR',
+  'Hero Passion Plus':'Hero Passion Plus',
+  'Hero Pleasure Plus':'Hero Pleasure Plus',
+  'Hero Super Splendor':'Hero Super Splendor Family',
+  'Hero Super Splendor XTEC':'Hero Super Splendor Family',
+  'Hero Xoom 110':'Hero Xoom Family',
+  'Hero Xoom 125':'Hero Xoom Family',
+  'Hero XPulse 210':'Hero XPulse Family',
+  'Hero XPulse 200 4V':'Hero XPulse Family',
+  'Hero Xtreme 125R':'Hero Xtreme 125R',
+  'XTREME 125R':'Hero Xtreme 125R',
+  'Hero Xtreme 160R':'Hero Xtreme 160R Family',
+  'Hero Xtreme 160R 4V':'Hero Xtreme 160R Family',
+  'Hero Xtreme 250R':'Hero Xtreme 250R',
+};
+// Lead-model name → expected Retail Dispersion category (for SAME/CROSS logic)
+const DISP_LM_CAT = {
+  'Hero Destini 110':'Hero Destini Family',
+  'Hero Destini 125':'Hero Destini Family',
+  'Hero Destini Prime':'Hero Destini Family',
+  'Hero Glamour':'Hero Glamour Family',
+  'Hero Glamour X 125':'Hero Glamour Family',
+  'Hero Karizma XMR':'Hero Karizma XMR',
+  'Hero Passion Plus':'Hero Passion Plus',
+  'Hero Pleasure Plus':'Hero Pleasure Plus',
+  'Hero Super Splendor':'Hero Super Splendor Family',
+  'Hero Super Splendor XTEC':'Hero Super Splendor Family',
+  'Hero Xoom 110':'Hero Xoom Family',
+  'Hero Xoom 125':'Hero Xoom Family',
+  'Hero XPulse 210':'Hero XPulse Family',
+  'Hero Xtreme 125R':'Hero Xtreme 125R',
+  'Hero Xtreme 160R':'Hero Xtreme 160R Family',
+  'Hero Xtreme 160R 4V':'Hero Xtreme 160R Family',
+  'Hero Xtreme 250R':'Hero Xtreme 250R',
+};
+
 const DispersionTab = React.memo(function DispersionTab({ data, filters, months, RT, onDetailedCsv }) {
   const { maps, rdm, rdmx } = data;
   if (!rdm) return ce('div',{className:'fade-up'},ce('div',{className:'card',style:{padding:32,textAlign:'center',color:'#94A3B8'}},'Retail Dispersion data not yet available. Please sync data.'));
@@ -3943,22 +3986,40 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
     return byModel;
   }
 
-  // Build drill-down map for a given set of months: mi → Map(purMI → {cnt, isSame})
+  // Build drill-down map: mi → Map(dispersion category → {cnt, isSame})
+  // Groups purchased models into Retail Dispersion categories; recomputes isSame via category match.
   function buildDrillDown(monthSet) {
     const byEnqModel = new Map();
     if (!rdmx) return byEnqModel;
     for (const row of rdmx) {
-      const mi=row[0],purMI=row[1],isSame=row[2],si=row[3],sti=row[4],ci=row[5],lti=row[6],li=row[7];
+      const mi=row[0],purMI=row[1],si=row[3],sti=row[4],ci=row[5],lti=row[6],li=row[7];
       const cnt = row[rdmxCol] || 0;
       if (cnt === 0) continue;
       if (!monthSet.has(maps.lm[li])) continue;
       if (!passesFilters(mi,si,sti,ci,lti,li)) continue;
+      const pmName = maps.purMdl[purMI] || '';
+      const pmCat  = DISP_PM_CAT[pmName] !== undefined ? DISP_PM_CAT[pmName] : pmName;
+      const lmCat  = DISP_LM_CAT[maps.mdl[mi]];
+      const isSame = lmCat !== undefined && pmCat === lmCat;
       if (!byEnqModel.has(mi)) byEnqModel.set(mi, new Map());
       const inner = byEnqModel.get(mi);
-      if (!inner.has(purMI)) inner.set(purMI, { cnt: 0, isSame });
-      inner.get(purMI).cnt += cnt;
+      if (!inner.has(pmCat)) inner.set(pmCat, { cnt: 0, isSame });
+      inner.get(pmCat).cnt += cnt;
     }
     return byEnqModel;
+  }
+
+  // Derive parent same/cross totals from the category-based drill-down
+  function buildTableFromDrillDown(dd) {
+    const out = new Map();
+    for (const [mi, catMap] of dd) {
+      let same = 0, cross = 0;
+      for (const [, v] of catMap) {
+        if (v.isSame) same += v.cnt; else cross += v.cnt;
+      }
+      if (same + cross > 0) out.set(mi, { same, cross });
+    }
+    return out;
   }
 
   // Render one dispersion card
@@ -4009,10 +4070,10 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
               const barColor = r.disp < 20 ? '#22C55E' : r.disp < 35 ? '#F59E0B' : r.disp < 50 ? '#F97316' : '#EF4444';
               const isExpanded = expandedModels.has(r.mi);
 
-              // Build sorted child rows for this enquired model
+              // Build sorted child rows for this enquired model (keys are dispersion categories)
               const childRows = (drillDown && drillDown.has(r.mi))
                 ? [...drillDown.get(r.mi).entries()]
-                    .map(([purMI, v]) => ({ purModel: maps.purMdl[purMI] || '', cnt: v.cnt, isSame: v.isSame }))
+                    .map(([cat, v]) => ({ purModel: cat, cnt: v.cnt, isSame: v.isSame }))
                     .filter(c => c.cnt > 0)
                     .sort((a, b) => {
                       if (a.isSame !== b.isSame) return b.isSame - a.isSame; // Same first
@@ -4094,10 +4155,15 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
     return new Set(months);
   }, [filters.months, months]);
 
-  const allMonthsMap      = useMemo(() => buildTable(activeMonths),  [rdm, maps, filters, activeMonths, rtCol]);
-  const monthlyMaps       = useMemo(() => months.map(M => ({ M, byModel: buildTable(new Set([M])) })),  [rdm, maps, filters, months, rtCol]);
   const allDrillDown      = useMemo(() => buildDrillDown(activeMonths), [rdmx, maps, filters, activeMonths, rdmxCol]);
   const monthlyDrillDowns = useMemo(() => months.map(M => buildDrillDown(new Set([M]))), [rdmx, maps, filters, months, rdmxCol]);
+  // Derive parent same/cross from category-based drill-down; fall back to rdm when rdmx unavailable
+  const allMonthsMap = useMemo(() =>
+    allDrillDown.size > 0 ? buildTableFromDrillDown(allDrillDown) : buildTable(activeMonths),
+  [allDrillDown, rdm, maps, filters, activeMonths, rtCol]);
+  const monthlyMaps  = useMemo(() =>
+    months.map((M, idx) => ({ M, byModel: (monthlyDrillDowns[idx] && monthlyDrillDowns[idx].size > 0) ? buildTableFromDrillDown(monthlyDrillDowns[idx]) : buildTable(new Set([M])) })),
+  [monthlyDrillDowns, rdm, maps, filters, months, rtCol]);
 
   return ce('div', { className:'fade-up' },
     rdm.length === 0 && ce('div',{className:'card',style:{padding:32,textAlign:'center',color:'#94A3B8'}},
