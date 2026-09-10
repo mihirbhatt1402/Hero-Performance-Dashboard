@@ -1721,7 +1721,7 @@ const DimGrid = React.memo(function DimGrid({
    MONTHLY GRIDS WRAPPER
    Renders one DimGrid per selected month.
    ════════════════════════════════════════════════════════════════════ */
-function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, noPrefix, viewerMode, noGroupHeaders, onDetailedCsv }) {
+function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, noPrefix, viewerMode, noGroupHeaders, onDetailedCsv, noExport }) {
   const aggs = useMemo(() => months.map(M => ({ M, agg: renderAgg(M) })), [months, renderAgg]);
   const summaryAgg = useMemo(() => {
     let gL=0, gR=0;
@@ -1757,8 +1757,8 @@ function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedG
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Summary'),
         ce('div',{style:{display:'flex',gap:0}},
-          ce(CsvBtn, { onClick:()=>makeAggCsv(summaryAgg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_AllMonths.csv') }),
-          onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), null) })
+          !noExport && ce(CsvBtn, { onClick:()=>makeAggCsv(summaryAgg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_AllMonths.csv') }),
+          !noExport && onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), null) })
         )
       ),
       ce(DimGrid, { agg:summaryAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
@@ -1769,8 +1769,8 @@ function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedG
         ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10} },
           ce('div', { className:'section-title', style:{marginBottom:0} }, noPrefix ? M : (title || dimLabel) + ' — ' + M),
           ce('div',{style:{display:'flex',gap:0}},
-            ce(CsvBtn, { onClick:()=>makeAggCsv(agg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv') }),
-            onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), M) })
+            !noExport && ce(CsvBtn, { onClick:()=>makeAggCsv(agg, dimLabel, (title||dimLabel).replace(/[^a-z0-9]/gi,'_')+'_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv') }),
+            !noExport && onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), M) })
           )
         ),
         ce(DimGrid, { agg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
@@ -2696,7 +2696,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
 /* ════════════════════════════════════════════════════════════════════
    GEO & DEALER TAB
    ════════════════════════════════════════════════════════════════════ */
-const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, months, RT, rawJoined, leadsMode }) {
+const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, months, RT, rawJoined, leadsMode, viewerMode }) {
   const [sortCol, setSortCol] = React.useState('leads');
   const [sortDir, setSortDir] = React.useState('desc');
   const [search, setSearch] = React.useState('');
@@ -2843,7 +2843,7 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
           onClick:()=>setSearch(''),
           style:{ padding:'7px 11px', border:'1px solid #e2e8f0', borderRadius:6, background:'#f1f5f9', cursor:'pointer', fontSize:12, color:'#64748b', whiteSpace:'nowrap' }
         }, '✕ Clear'),
-        ce('button', {
+        !viewerMode && ce('button', {
           onClick:exportCsv,
           style:{ padding:'7px 13px', background:'#9A3412', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }
         }, 'Export CSV')
@@ -2956,7 +2956,7 @@ const LTSourceTab = React.memo(function LTSourceTab({ data, filters, months, RT,
 /* ════════════════════════════════════════════════════════════════════
    MODEL × SOURCE TAB
    ════════════════════════════════════════════════════════════════════ */
-const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv }) {
+const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv, clientMode }) {
   const { maps, mm, univ: univRaw } = data;
   const pmsm = data.pmsm || [];
   const univ = univRaw || [];
@@ -2998,7 +2998,7 @@ const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, month
     return mergeLeadRetailAggs(leadsAgg, retailAgg);
   }, [mm, pmsm, univ, maps, filters, getLR]);
 
-  return ce(MonthlyGrids, { title:'Model Performance', months, renderAgg, srcGroups, dimLabel:'Model', expandedGrps, onToggleGrp, viewerMode, onDetailedCsv });
+  return ce(MonthlyGrids, { title:'Model Performance', months, renderAgg, srcGroups, dimLabel:'Model', expandedGrps, onToggleGrp, viewerMode, onDetailedCsv, noExport:clientMode });
 });
 
 /* ════════════════════════════════════════════════════════════════════
@@ -4125,7 +4125,7 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
 /* ════════════════════════════════════════════════════════════════════
    FILTER BAR
    ════════════════════════════════════════════════════════════════════ */
-const FilterBar = React.memo(function FilterBar({ data, filters, onFiltersChange, RT, setRT, viewerMode }) {
+const FilterBar = React.memo(function FilterBar({ data, filters, onFiltersChange, RT, setRT, viewerMode, clientMode }) {
   const { maps } = data;
   const months    = useMemo(() => [...new Set(maps.lm)].sort((a,b) => monthOrder(b)-monthOrder(a)), [maps]);
   const leadTypes = useMemo(() => [...new Set(maps.lt)].sort(), [maps]);
@@ -4160,7 +4160,7 @@ const FilterBar = React.memo(function FilterBar({ data, filters, onFiltersChange
     ce(MultiSelect, { label:'State',     options:states,    selected:filters.states,    onChange: v => set('states', v) }),
     cities.length > 0 && ce(MultiSelect, { label:'City', options:cities, selected:filters.cities, onChange: v => set('cities', v) }),
     purMdls.length > 0 && ce(MultiSelect, { label:'Purch. Model', options:purMdls, selected:filters.purMdls||new Set(), onChange: v => set('purMdls', v) }),
-    data.rt_cols && ce('div', { style:{display:'flex',alignItems:'center',background:'#F1F5F9',borderRadius:20,padding:'2px',border:'1px solid #E2E8F0',gap:2,flexShrink:0} },
+    !clientMode && data.rt_cols && ce('div', { style:{display:'flex',alignItems:'center',background:'#F1F5F9',borderRadius:20,padding:'2px',border:'1px solid #E2E8F0',gap:2,flexShrink:0} },
       rtBtn('all', 'All'),
       rtBtn('dms', 'DMS'),
       rtBtn('co',  'Call Out'),
@@ -5427,6 +5427,7 @@ const TABS = [
 
 function App({fbUser,role,presence,onSignOut,onAdminOpen}){
   const viewerMode=role==='viewer';
+  const clientMode=role==='client';
   const [data,setData]=useState(null);
   const [rawJoined,setRawJoined]=useState(null);
   const [syncing,setSyncing]=useState(false);
@@ -5704,9 +5705,20 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     return allM.filter(m=>filters.months.has(m));
   },[effectiveData,filters.months]);
 
-  const visibleTabs=viewerMode
-    ?TABS.filter(t=>['modelxsrc','statexsrc','webid','geodealer','targetdelivery'].includes(t.id))
-    :TABS;
+  const visibleTabs=useMemo(()=>
+    clientMode
+      ?TABS.filter(t=>['modelxsrc','geodealer','targetdelivery'].includes(t.id))
+      :viewerMode
+      ?TABS.filter(t=>['modelxsrc','statexsrc','webid','geodealer','targetdelivery'].includes(t.id))
+      :TABS
+  ,[clientMode,viewerMode]);
+
+  // Auto-navigate to first visible tab when role changes visible set
+  useEffect(()=>{
+    if(visibleTabs.length>0&&!visibleTabs.find(t=>t.id===tab)){
+      setTab(visibleTabs[0].id);
+    }
+  },[visibleTabs]);
 
   const onDetailedCsv=useCallback((tabName,month)=>{
     const suffix=month?month.replace(/[^a-z0-9]/gi,'_'):'AllMonths';
@@ -5715,7 +5727,11 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
 
   const tabContent=useMemo(()=>{
     if(!effectiveData)return null;
-    const props={data:effectiveData,filters,months,RT,viewerMode,onDetailedCsv};
+    // noSource: combined flag — hides source columns in DimGrid (viewer & client)
+    // clientMode suppresses exports and DMS/Call Out in individual tabs
+    const noSource=viewerMode||clientMode;
+    const clientDetailedCsv=clientMode?undefined:onDetailedCsv;
+    const props={data:effectiveData,filters,months,RT,viewerMode:noSource,clientMode,onDetailedCsv:clientDetailedCsv};
     switch(tab){
       case 'overview':    return ce(OverviewTab,      props);
       case 'source':      return ce(SourceTab,        props);
@@ -5727,12 +5743,12 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       case 'statexmodel': return ce(StateModelTab,    props);
       case 'cityxmodel':  return ce(CityModelTab,     props);
       case 'geodealer':       return ce(GeoAndDealerTab,      {...props,rawJoined,leadsMode});
-      case 'targetdelivery':  return ce(TargetDeliveryTab,   {data:effectiveData,filters,RT,rawJoined,leadsMode,viewerMode});
+      case 'targetdelivery':  return ce(TargetDeliveryTab,   {data:effectiveData,filters,RT,rawJoined,leadsMode,viewerMode:noSource});
       case 'dispersion':      return ce(DispersionTab,       props);
       case 'pivot':       return ce(PivotTab,         {...props,rawJoined,leadsMode});
       default: return null;
     }
-  },[tab,effectiveData,filters,months,RT,viewerMode,onDetailedCsv,rawJoined,leadsMode]);
+  },[tab,effectiveData,filters,months,RT,viewerMode,clientMode,onDetailedCsv,rawJoined,leadsMode]);
 
   if(!effectiveData)return ce(HeroSyncScreen,{onSync:handleSync,syncing,syncErr});
 
@@ -5760,7 +5776,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
             ))
           );
         })(),
-        ce('button',{onClick:handleSync,disabled:syncing,
+        !clientMode&&ce('button',{onClick:handleSync,disabled:syncing,
           style:{flexShrink:0,padding:'6px 16px',background:syncing?'rgba(255,255,255,.7)':'#fff',border:'none',borderRadius:20,color:'#7C2D12',cursor:syncing?'default':'pointer',fontFamily:'inherit',fontWeight:700,boxShadow:'0 2px 8px rgba(0,0,0,.12)',display:'flex',alignItems:'center',gap:5,fontSize:10}},
           syncing?ce('span',{style:{display:'inline-block',animation:'spin .8s linear infinite',fontSize:11}},'\u27f3'):'\ud83d\udd04',
           syncing?'Syncing\u2026':'Sync Sheets'
@@ -5769,7 +5785,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
           ce('button',{className:'fs-btn',onClick:decFont,disabled:fontScale<=FONT_MIN,title:'Decrease font size','aria-label':'Decrease font size'},'A\u2212'),
           ce('button',{className:'fs-btn',onClick:incFont,disabled:fontScale>=FONT_MAX,title:'Increase font size','aria-label':'Increase font size'},'A+')
         ),
-        ce('div',{style:{display:'flex',alignItems:'center',background:'#F1F5F9',borderRadius:20,padding:'2px',border:'1px solid #E2E8F0',gap:2,flexShrink:0}},
+        !clientMode&&ce('div',{style:{display:'flex',alignItems:'center',background:'#F1F5F9',borderRadius:20,padding:'2px',border:'1px solid #E2E8F0',gap:2,flexShrink:0}},
           ce('button',{onClick:()=>setLeadsMode('create'),
             style:{padding:'4px 12px',fontSize:10,fontWeight:700,fontFamily:'inherit',border:'none',borderRadius:18,cursor:'pointer',transition:'all 120ms',
               background:leadsMode==='create'?'#9A3412':'transparent',color:leadsMode==='create'?'#fff':'#64748B',whiteSpace:'nowrap'}},'On Create'),
@@ -5799,7 +5815,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     ),
     /* Filter bar */
     ce('div',{style:{maxWidth:1440,margin:'0 auto',padding:'14px 24px 0',opacity:isPending?0.6:1,transition:'opacity .15s'}},
-      ce(FilterBar,{data:effectiveData,filters,onFiltersChange:f=>startT(()=>setFilters(f)),RT,setRT,viewerMode})
+      ce(FilterBar,{data:effectiveData,filters,onFiltersChange:f=>startT(()=>setFilters(f)),RT,setRT,viewerMode:viewerMode||clientMode,clientMode})
     ),
     /* Tab content */
     ce('div',{style:{maxWidth:1440,margin:'0 auto',padding:'14px 24px 32px'}},
@@ -5821,7 +5837,6 @@ var FIREBASE_CONFIG={
   appId:'1:587923423865:web:038e0493ad4f5944d70aa8',
 };
 var ADMIN_EMAILS=['mihir.bhatt@girnarsoft.com','aditya.kumar@girnarsoft.com'];
-var ALLOWED_DOMAINS=['@girnarsoft.com','@girnarcare.com'];
 var USERS_COL='hero_users';
 var PRESENCE_PATH='hero_presence';
 
@@ -5875,7 +5890,7 @@ function LoginPage({onLogin,loading,error}){
         )
       ),
       ce('h2',{style:{fontSize:18,fontWeight:700,color:'#111827',margin:'0 0 8px'}},'Sign in to access'),
-      ce('p',{style:{fontSize:12,color:'#6b7280',margin:'0 0 24px',lineHeight:1.6}},'Use your @girnarsoft.com or @girnarcare.com Google account to continue.'),
+      ce('p',{style:{fontSize:12,color:'#6b7280',margin:'0 0 24px',lineHeight:1.6}},'Sign in with your Google account to continue.'),
       loading
         ?ce('div',{style:{padding:'18px 0',color:'#6b7280',fontSize:13}},'Signing in\u2026')
         :ce('button',{className:'auth-btn',onClick:onLogin},
@@ -5927,6 +5942,7 @@ function PresenceStrip({presence,fbUser,role,onSignOut,onAdminOpen}){
     Av(selfPres,true),
     (role==='admin'||role==='full')&&ce('span',{className:'viewer-badge',style:{background:'rgba(255,255,255,.15)',color:'#FED7AA',borderRadius:20,padding:'2px 8px',fontSize:9,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',marginLeft:4}},role==='admin'?'Admin':'Full'),
     role==='viewer'&&ce('span',{className:'viewer-badge',style:{marginLeft:4}},'Viewer'),
+    role==='client'&&ce('span',{className:'viewer-badge',style:{background:'#ccfbf1',color:'#0d9488',marginLeft:4}},'Client'),
     role==='admin'&&ce('button',{
       style:{marginLeft:6,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(255,255,255,.3)',background:'rgba(255,255,255,.12)',fontSize:11,cursor:'pointer',color:'#fff',fontWeight:600,fontFamily:'inherit',whiteSpace:'nowrap'},
       onClick:onAdminOpen},'\u2699 Admin'),
@@ -5953,8 +5969,8 @@ function AdminPanel({onClose}){
       .then(function(){setSaving(null);})
       .catch(function(e){setPanelErr(e.message);setSaving(null);});
   }
-  var roleColor={admin:'#92400e',full:'#15803d',viewer:'#1d4ed8',pending:'#6b7280'};
-  var roleBg={admin:'#fef3c7',full:'#dcfce7',viewer:'#dbeafe',pending:'#f3f4f6'};
+  var roleColor={admin:'#92400e',full:'#15803d',viewer:'#1d4ed8',pending:'#6b7280',client:'#0d9488'};
+  var roleBg={admin:'#fef3c7',full:'#dcfce7',viewer:'#dbeafe',pending:'#f3f4f6',client:'#ccfbf1'};
   return ce('div',{className:'admin-panel-overlay',onClick:function(e){if(e.target===e.currentTarget)onClose();}},
     ce('div',{className:'admin-card'},
       ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}},
@@ -5965,7 +5981,8 @@ function AdminPanel({onClose}){
         ce('strong',null,'pending'),' \u2014 awaiting access  \u00b7  ',
         ce('strong',null,'viewer'),' \u2014 totals only  \u00b7  ',
         ce('strong',null,'full'),' \u2014 all columns  \u00b7  ',
-        ce('strong',null,'admin'),' \u2014 full + manage users'
+        ce('strong',null,'admin'),' \u2014 full + manage users  \u00b7  ',
+        ce('strong',null,'client'),' \u2014 client view (Model / Geo / Target only)'
       ),
       panelErr&&ce('div',{style:{background:'#fef2f2',color:'#dc2626',padding:'8px 12px',borderRadius:8,fontSize:12,marginBottom:12}},panelErr),
       ce('div',{style:{overflowX:'auto'}},
@@ -5989,7 +6006,7 @@ function AdminPanel({onClose}){
                     ?ce('span',{style:{fontSize:11,color:'#9ca3af'}},'Saving\u2026')
                     :ce('select',{value:u.role||'pending',onChange:function(e){changeRole(u.id,e.target.value);},
                         style:{fontSize:11,padding:'3px 8px',borderRadius:6,border:'1px solid #d1d5db',cursor:'pointer',background:'#fff',fontFamily:'inherit'}},
-                      ['pending','viewer','full','admin'].map(function(r){
+                      ['pending','viewer','full','admin','client'].map(function(r){
                         return ce('option',{key:r,value:r},r.charAt(0).toUpperCase()+r.slice(1));
                       })
                     )
@@ -6033,14 +6050,6 @@ function AuthGate(){
       if(handledUid.current===user.uid){return;}
       teardown();
       handledUid.current=user.uid;
-      var email=(user.email||'').toLowerCase().trim();
-      if(!email||!ALLOWED_DOMAINS.some(function(d){return email.endsWith(d);})){
-        var domainErr='Access denied: '+email+' is not from an allowed domain (@girnarsoft.com or @girnarcare.com).';
-        if(mounted)setAuthErr(domainErr);
-        handledUid.current=null;
-        auth.signOut();
-        return;
-      }
       if(mounted){setFbUser(user);setAuthState('pending');}
       ensureUserDoc(user).catch(function(e){
         console.error('[HERO AUTH] ensureUserDoc failed:',e.code||e.message);
