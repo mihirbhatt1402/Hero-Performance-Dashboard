@@ -1452,7 +1452,7 @@ function exportLeadCategDetailedCsv(rawJoined, filters, RT, leadsMode, filename,
     if (!allSt)  { if (stf === FILTER_CLEARED) continue; if (!stf.has(r.state))  continue; }
     if (!allCity){ if (cf  === FILTER_CLEARED) continue; if (!cf.has(r.city))    continue; }
     const statusName = r.statusName || '';
-    const isRA = String(statusName).trim().toLowerCase() === 'retail attribution';
+    const isRA = isRetailedLead(r);
     aoa.push([
       r.encryptMobile||'', r.idVerifiedLead||'', r.opty_id,
       fmtD(r.leadDate), r.lead_month, r.brand||'', r.model,
