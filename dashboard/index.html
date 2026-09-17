@@ -493,6 +493,9 @@ function normalizeHeroMonth(s){
   if(m3)return MONTH_NAMES[parseInt(m3[1])-1]+"'"+m3[2];
   const m4=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if(m4)return MONTH_NAMES[parseInt(m4[2])-1]+"'"+m4[3];
+  // Mon-YY format (e.g. "Aug-26" → "Aug'2026")
+  const m5=s.match(/^([A-Za-z]{3})-(\d{2})$/);
+  if(m5){const mi=MONTH_NAMES.findIndex(n=>n.toLowerCase()===m5[1].toLowerCase());if(mi>=0)return MONTH_NAMES[mi]+"'"+(2000+parseInt(m5[2]));}
   return s;
 }
 
