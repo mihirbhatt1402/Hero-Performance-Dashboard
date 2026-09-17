@@ -2284,7 +2284,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
 /* ════════════════════════════════════════════════════════════════════
    SOURCE ANALYSIS TAB
    ════════════════════════════════════════════════════════════════════ */
-const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onDetailedCsv }) {
+const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months, RT, onDetailedCsv }) {
   const { maps, sm, univ: univRaw, csm: csmRaw } = data;
   const univ = univRaw || [];
   const csm  = csmRaw  || [];
@@ -2292,6 +2292,11 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onD
   const pm_csm = data.pm_csm || [];
   const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
   const hasCityF = !!(filters.cities && filters.cities.size > 0 && maps.city);
+  // Lead-month matrices: always the pre-swap (On Create) data so Leads column reflects lead month
+  const leadData = rawData || data;
+  const smLead   = leadData.sm   || sm;
+  const univLead = leadData.univ || univ;
+  const csmLead  = leadData.csm  || csm;
 
   const renderMonth = useCallback((M) => {
     const allS = !filters.sources || filters.sources.size === 0;
@@ -2299,35 +2304,70 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onD
     const univF = makeUnivFilter(filters);
     const bySrc = new Map();
     let gL=0, gR=0;
+    // Pass 1: Leads (L) — always lead-month matrices so Leads attribution never shifts with booking month
     if (univF) {
-      for (const row of univ) {
+      for (const row of univLead) {
         if (maps.lm[row[4]] !== M) continue;
         const src = maps.src[row[1]];
         if (!allS && !filters.sources.has(src)) continue;
         if (!univF(row, maps)) continue;
-        const [l,r] = getLR(row);
-        gL+=l; if (allPurMdl) gR+=r;
-        const c = bySrc.get(src)||[0,0]; c[0]+=l; if (allPurMdl) c[1]+=r; bySrc.set(src,c);
+        const l = getLR(row)[0];
+        gL+=l;
+        const c = bySrc.get(src)||[0,0]; c[0]+=l; bySrc.set(src,c);
       }
-    } else if (hasCityF && csm.length > 0) {
-      for (const row of csm) {
+    } else if (hasCityF && csmLead.length > 0) {
+      for (const row of csmLead) {
         if (maps.lm[row[2]] !== M) continue;
         const city = maps.city[row[0]];
         if (!filters.cities.has(city)) continue;
         const src = maps.src[row[1]];
         if (!allS && !filters.sources.has(src)) continue;
-        const [l,r] = getLR(row);
-        gL+=l; if (allPurMdl) gR+=r;
-        const c = bySrc.get(src)||[0,0]; c[0]+=l; if (allPurMdl) c[1]+=r; bySrc.set(src,c);
+        const l = getLR(row)[0];
+        gL+=l;
+        const c = bySrc.get(src)||[0,0]; c[0]+=l; bySrc.set(src,c);
       }
     } else {
-      for (const row of sm) {
+      for (const row of smLead) {
         if (maps.lm[row[1]] !== M) continue;
         const src = maps.src[row[0]];
         if (!allS && !filters.sources.has(src)) continue;
-        const [l,r] = getLR(row);
-        gL+=l; if (allPurMdl) gR+=r;
-        const c = bySrc.get(src)||[0,0]; c[0]+=l; if (allPurMdl) c[1]+=r; bySrc.set(src,c);
+        const l = getLR(row)[0];
+        gL+=l;
+        const c = bySrc.get(src)||[0,0]; c[0]+=l; bySrc.set(src,c);
+      }
+    }
+    // Pass 2: Retail (R) — effective matrices (existing On Create / On Update behaviour unchanged)
+    if (allPurMdl) {
+      if (univF) {
+        for (const row of univ) {
+          if (maps.lm[row[4]] !== M) continue;
+          const src = maps.src[row[1]];
+          if (!allS && !filters.sources.has(src)) continue;
+          if (!univF(row, maps)) continue;
+          const r = getLR(row)[1];
+          gR+=r;
+          const c = bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
+        }
+      } else if (hasCityF && csm.length > 0) {
+        for (const row of csm) {
+          if (maps.lm[row[2]] !== M) continue;
+          const city = maps.city[row[0]];
+          if (!filters.cities.has(city)) continue;
+          const src = maps.src[row[1]];
+          if (!allS && !filters.sources.has(src)) continue;
+          const r = getLR(row)[1];
+          gR+=r;
+          const c = bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
+        }
+      } else {
+        for (const row of sm) {
+          if (maps.lm[row[1]] !== M) continue;
+          const src = maps.src[row[0]];
+          if (!allS && !filters.sources.has(src)) continue;
+          const r = getLR(row)[1];
+          gR+=r;
+          const c = bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
+        }
       }
     }
     if (!allPurMdl) {
@@ -2402,7 +2442,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onD
         )
       )
     );
-  }, [sm, csm, univ, pmsm, pm_csm, maps, filters, getLR, hasCityF]);
+  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF]);
 
   const crossMonthTotals = useMemo(() => {
     const allS = !filters.sources || filters.sources.size === 0;
@@ -2411,32 +2451,64 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onD
     let gL=0, gR=0;
     const mSet = new Set(months);
     const bySrc = new Map();
+    // Pass 1: Leads (L) — always lead-month matrices
     if (univF) {
-      for (const row of univ) {
+      for (const row of univLead) {
         if (!mSet.has(maps.lm[row[4]])) continue;
         const src = maps.src[row[1]];
         if (!allS && !filters.sources.has(src)) continue;
         if (!univF(row, maps)) continue;
-        const [l,r] = getLR(row); gL+=l; if (allPurMdl) gR+=r;
-        const c=bySrc.get(src)||[0,0]; c[0]+=l; if (allPurMdl) c[1]+=r; bySrc.set(src,c);
+        const l = getLR(row)[0]; gL+=l;
+        const c=bySrc.get(src)||[0,0]; c[0]+=l; bySrc.set(src,c);
       }
-    } else if (hasCityF && csm.length > 0) {
-      for (const row of csm) {
+    } else if (hasCityF && csmLead.length > 0) {
+      for (const row of csmLead) {
         if (!mSet.has(maps.lm[row[2]])) continue;
         const city = maps.city[row[0]];
         if (!filters.cities.has(city)) continue;
         const src = maps.src[row[1]];
         if (!allS && !filters.sources.has(src)) continue;
-        const [l,r] = getLR(row); gL+=l; if (allPurMdl) gR+=r;
-        const c=bySrc.get(src)||[0,0]; c[0]+=l; if (allPurMdl) c[1]+=r; bySrc.set(src,c);
+        const l = getLR(row)[0]; gL+=l;
+        const c=bySrc.get(src)||[0,0]; c[0]+=l; bySrc.set(src,c);
       }
     } else {
-      for (const row of sm) {
+      for (const row of smLead) {
         if (!mSet.has(maps.lm[row[1]])) continue;
         const src = maps.src[row[0]];
         if (!allS && !filters.sources.has(src)) continue;
-        const [l,r] = getLR(row); gL+=l; if (allPurMdl) gR+=r;
-        const c=bySrc.get(src)||[0,0]; c[0]+=l; if (allPurMdl) c[1]+=r; bySrc.set(src,c);
+        const l = getLR(row)[0]; gL+=l;
+        const c=bySrc.get(src)||[0,0]; c[0]+=l; bySrc.set(src,c);
+      }
+    }
+    // Pass 2: Retail (R) — effective matrices (existing behaviour unchanged)
+    if (allPurMdl) {
+      if (univF) {
+        for (const row of univ) {
+          if (!mSet.has(maps.lm[row[4]])) continue;
+          const src = maps.src[row[1]];
+          if (!allS && !filters.sources.has(src)) continue;
+          if (!univF(row, maps)) continue;
+          const r = getLR(row)[1]; gR+=r;
+          const c=bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
+        }
+      } else if (hasCityF && csm.length > 0) {
+        for (const row of csm) {
+          if (!mSet.has(maps.lm[row[2]])) continue;
+          const city = maps.city[row[0]];
+          if (!filters.cities.has(city)) continue;
+          const src = maps.src[row[1]];
+          if (!allS && !filters.sources.has(src)) continue;
+          const r = getLR(row)[1]; gR+=r;
+          const c=bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
+        }
+      } else {
+        for (const row of sm) {
+          if (!mSet.has(maps.lm[row[1]])) continue;
+          const src = maps.src[row[0]];
+          if (!allS && !filters.sources.has(src)) continue;
+          const r = getLR(row)[1]; gR+=r;
+          const c=bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
+        }
       }
     }
     if (!allPurMdl) {
@@ -2460,7 +2532,7 @@ const SourceTab = React.memo(function SourceTab({ data, filters, months, RT, onD
     }
     const sorted = [...bySrc.entries()].sort((a,b)=>b[1][0]-a[1][0]);
     return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted };
-  }, [sm, csm, univ, pmsm, pm_csm, maps, filters, getLR, hasCityF, months]);
+  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, months]);
 
   return ce('div', {className:'fade-up'},
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
@@ -5800,7 +5872,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     const props={data:effectiveData,filters,months,RT,viewerMode:noSource,clientMode,onDetailedCsv:clientDetailedCsv};
     switch(tab){
       case 'overview':    return ce(OverviewTab,      props);
-      case 'source':      return ce(SourceTab,        props);
+      case 'source':      return ce(SourceTab,        {...props,rawData:data});
       case 'webid':       return ce(WebIdTab,         {...props,rawJoined,leadsMode});
       case 'ltxsrc':      return ce(LTSourceTab,      props);
       case 'modelxsrc':   return ce(ModelSourceTab,   props);
@@ -5814,7 +5886,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       case 'pivot':       return ce(PivotTab,         {...props,rawJoined,leadsMode});
       default: return null;
     }
-  },[tab,effectiveData,filters,months,RT,viewerMode,clientMode,onDetailedCsv,rawJoined,leadsMode]);
+  },[tab,data,effectiveData,filters,months,RT,viewerMode,clientMode,onDetailedCsv,rawJoined,leadsMode]);
 
   if(!effectiveData)return ce(HeroSyncScreen,{onSync:handleSync,syncing,syncErr});
 
