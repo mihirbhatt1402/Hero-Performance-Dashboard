@@ -3323,33 +3323,43 @@ const TD_MONTH_BTNS = ['all','Aug\'26','Sep\'26','Oct\'26','Nov\'26','Dec\'26','
 const TD_MONTH_FULL = {'Aug\'26':'Aug\'2026','Sep\'26':'Sep\'2026','Oct\'26':'Oct\'2026','Nov\'26':'Nov\'2026','Dec\'26':'Dec\'2026','Jan\'27':'Jan\'2027','Feb\'27':'Feb\'2027','Mar\'27':'Mar\'2027'};
 
 const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters, RT, rawJoined, leadsMode, viewerMode }) {
-  const [tdMonth, setTdMonth] = useState('all');
+  const [tdMonths, setTdMonths] = useState(() => new Set()); // empty Set = All months
   const [expandedZones, setExpandedZones] = useState(() => new Set());
   const [expandedAos, setExpandedAos] = useState(() => new Set());
   const [flatSearch, setFlatSearch] = useState('');
   const [flatScope, setFlatScope] = useState('All');
 
+  const isAllSelected = tdMonths.size === 0;
+
+  const toggleTdMonth = useCallback(lbl => {
+    if (lbl === 'all') { setTdMonths(new Set()); return; }
+    setTdMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(lbl)) { next.delete(lbl); } else { next.add(lbl); }
+      return next; // empty after last delete = All, which is valid
+    });
+  }, []);
+
   // Aggregate deliveries from rawJoined, then build per-(AO×Model) target+delivery rows.
   const allRows = useMemo(() => {
     if (!rawJoined || !rawJoined.length) return [];
-    const tdMonthFull = tdMonth !== 'all' ? TD_MONTH_FULL[tdMonth] : null;
-    // DELIVERY months = intersection of tdMonth (if specific) and global months ribbon.
-    // Target period is determined solely by the tdMonth button (see target section below),
-    // so the global ribbon never shrinks the target — it only affects which leads are counted.
-    //
-    //  tdMonth specific + global active → intersection (Case 1: Aug+Sep ∩ Sep = Sep;
-    //                                                   Case 2: Aug ∩ Sep = ∅ → 0 delivery)
-    //  tdMonth specific + global empty  → tdMonth only  (Case 3)
-    //  tdMonth='all'   + global active  → global filter (Case 4)
-    //  tdMonth='all'   + global empty   → all hero months
+    // tdMonthsFullSet: Set of full month labels selected, or null for "All months"
+    const tdMonthsFullSet = isAllSelected ? null
+      : new Set([...tdMonths].map(m => TD_MONTH_FULL[m]).filter(Boolean));
+
+    // DELIVERY months = intersection of tdMonthsFullSet (if specific) and global months ribbon.
+    // Target period is determined solely by tdMonths (never shrunk by global ribbon).
+    //   tdMonths specific + global active → intersection
+    //   tdMonths specific + global empty  → tdMonths only
+    //   tdMonths=All      + global active → global filter (delivery only)
+    //   tdMonths=All      + global empty  → all hero months
     let selM;
-    if (tdMonthFull) {
+    if (tdMonthsFullSet !== null) {
       const gf = filters.months;
       if (gf && gf.size > 0) {
-        // Intersection: count delivery only when global filter also includes the selected month
-        selM = gf.has(tdMonthFull) ? new Set([tdMonthFull]) : new Set();
+        selM = new Set([...tdMonthsFullSet].filter(m => gf.has(m)));
       } else {
-        selM = new Set([tdMonthFull]);
+        selM = tdMonthsFullSet;
       }
     } else {
       selM = (filters.months && filters.months.size > 0) ? filters.months : null;
@@ -3363,6 +3373,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     const allCity   = !cf  || cf.size  === 0;
     const allPurMdl = !pmf || pmf.size === 0;
 
+    // --- Delivery accumulation (respects all global filters) ---
     const delMap = new Map();
     for (const r of rawJoined) {
       const effMonth = (leadsMode==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month;
@@ -3384,18 +3395,59 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       if (purOk && (RT==='dms'?(isR&&r.callType==='dms'):RT==='co'?(isR&&r.callType==='co'):isR)) d.r++;
     }
 
+    // --- Target computation: apply global model/state/city filters to targets ---
+    // Precompute which target model names survive the model filter
+    let filteredTargetModels = null; // null = all models pass
+    if (!allMdl) {
+      filteredTargetModels = mdf === FILTER_CLEARED
+        ? new Set()
+        : new Set([...mdf].map(heroNormLeadModelForTD).filter(Boolean));
+    }
+    // Build AO→state and AO→city maps (from rawJoined) for AO-level target filtering
+    const aoStateMap = new Map();
+    const aoCityMap  = new Map();
+    if (!allSt || !allCity) {
+      for (const r of rawJoined) {
+        const normAo = heroNormTargetAo(r.ao||'');
+        if (!allSt) {
+          if (!aoStateMap.has(normAo)) aoStateMap.set(normAo, new Set());
+          aoStateMap.get(normAo).add(r.state||'');
+        }
+        if (!allCity) {
+          if (!aoCityMap.has(normAo)) aoCityMap.set(normAo, new Set());
+          aoCityMap.get(normAo).add(r.city||'');
+        }
+      }
+    }
+
     const rows = [];
     for (const [ao, aoData] of Object.entries(HERO_TARGET_DATA)) {
+      // State filter: include this AO only if its leads include the filtered state(s)
+      if (!allSt) {
+        if (stf === FILTER_CLEARED) continue;
+        const aoStates = aoStateMap.get(ao);
+        if (aoStates && ![...stf].some(st => aoStates.has(st))) continue;
+      }
+      // City filter: include this AO only if its leads include the filtered city(s)
+      if (!allCity) {
+        if (cf === FILTER_CLEARED) continue;
+        const aoCities = aoCityMap.get(ao);
+        if (aoCities && ![...cf].some(city => aoCities.has(city))) continue;
+      }
+
       for (const [model, qData] of Object.entries(aoData.models)) {
+        // Model filter: skip target models that don't match the global model filter
+        if (filteredTargetModels !== null && !filteredTargetModels.has(model)) continue;
+
         let lt = 0, rt = 0;
-        if (tdMonth !== 'all') {
-          // Target period = the selected month's quota (Q÷divisor).
-          // The global months ribbon does NOT affect target allocation.
-          const mc = HERO_MONTH_TARGET_CFG[tdMonthFull];
-          if (mc && qData[mc.q]) { lt = qData[mc.q][0] / mc.div; rt = qData[mc.q][1] / mc.div; }
+        if (tdMonthsFullSet !== null) {
+          // Selected months: sum per-month quotas (Q÷divisor)
+          for (const mFull of tdMonthsFullSet) {
+            const mc = HERO_MONTH_TARGET_CFG[mFull];
+            if (mc && qData[mc.q]) { lt += qData[mc.q][0] / mc.div; rt += qData[mc.q][1] / mc.div; }
+          }
         } else {
-          // tdMonth='All': full annual target regardless of global months ribbon.
-          // (Case 4: global=Sep, tdMonth=All → target=Q2+Q3+Q4, delivery=Sep only)
+          // All months: full Q2+Q3+Q4 annual target (global ribbon never shrinks target)
           for (const q of ['Q2','Q3','Q4']) {
             if (qData[q]) { lt += qData[q][0]; rt += qData[q][1]; }
           }
@@ -3408,7 +3460,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       }
     }
     return rows;
-  }, [rawJoined, filters, leadsMode, RT, tdMonth]);
+  }, [rawJoined, filters, leadsMode, RT, tdMonths, isAllSelected]);
 
   // Summary totals (not affected by search box)
   const summaryTotals = useMemo(() => allRows.reduce((acc,r) => ({
@@ -3478,30 +3530,34 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   useEffect(() => {
     window.heroTargetVsDeliveryQA = function() {
       const eps = 0.001;
-      const tdMonthFull = tdMonth !== 'all' ? TD_MONTH_FULL[tdMonth] : null;
+      const tdMonthsFullSet = isAllSelected ? null
+        : new Set([...tdMonths].map(m => TD_MONTH_FULL[m]).filter(Boolean));
       const gf = filters.months;
       let effectiveDeliveryMonths;
-      if (tdMonthFull) {
+      if (tdMonthsFullSet !== null) {
         if (gf && gf.size > 0) {
-          effectiveDeliveryMonths = gf.has(tdMonthFull) ? [tdMonthFull] : [];
+          const inter = [...tdMonthsFullSet].filter(m => gf.has(m));
+          effectiveDeliveryMonths = inter;
         } else {
-          effectiveDeliveryMonths = [tdMonthFull];
+          effectiveDeliveryMonths = [...tdMonthsFullSet];
         }
       } else {
         effectiveDeliveryMonths = (gf && gf.size > 0) ? [...gf] : null;
       }
-      const targetPeriod = tdMonth !== 'all'
-        ? tdMonthFull + ' ('+HERO_MONTH_TARGET_CFG[tdMonthFull]?.q+'÷'+HERO_MONTH_TARGET_CFG[tdMonthFull]?.div+')'
+      const targetPeriod = !isAllSelected
+        ? [...tdMonths].join(' + ') + ' (multi-select)'
         : 'All (Q2+Q3+Q4 full annual)';
       const caseMatrix = [
-        { case:'1 (Global=Aug+Sep, TD=Sep\'26)', globalFilter:'Aug\'2026,Sep\'2026', tdM:'Sep\'26',
+        { case:'1 (Global=Aug+Sep, TD=Sep\'26)', globalFilter:'Aug\'2026,Sep\'2026', tdM:'{Sep\'26}',
           targetPeriod:'Sep\'2026 (Q2÷2)', deliveryMonths:'Sep\'2026 (∩ of {Aug,Sep} ∩ {Sep})' },
-        { case:'2 (Global=Aug, TD=Sep\'26)', globalFilter:'Aug\'2026', tdM:'Sep\'26',
+        { case:'2 (Global=Aug, TD=Sep\'26)', globalFilter:'Aug\'2026', tdM:'{Sep\'26}',
           targetPeriod:'Sep\'2026 (Q2÷2)', deliveryMonths:'∅ → 0 delivery (Aug∩Sep=empty)' },
-        { case:'3 (Global=All, TD=Sep\'26)', globalFilter:'(empty)', tdM:'Sep\'26',
+        { case:'3 (Global=All, TD=Sep\'26)', globalFilter:'(empty)', tdM:'{Sep\'26}',
           targetPeriod:'Sep\'2026 (Q2÷2)', deliveryMonths:'Sep\'2026 (no global → use TD)' },
-        { case:'4 (Global=Sep, TD=All)', globalFilter:'Sep\'2026', tdM:'all',
+        { case:'4 (Global=Sep, TD=All)', globalFilter:'Sep\'2026', tdM:'All',
           targetPeriod:'Full Q2+Q3+Q4 annual', deliveryMonths:'Sep\'2026 (global filter applies)' },
+        { case:'5 (Global=All, TD=Aug+Sep)', globalFilter:'(empty)', tdM:'{Aug\'26,Sep\'26}',
+          targetPeriod:'Aug\'2026+Sep\'2026 (Q2÷2 each)', deliveryMonths:'Aug+Sep' },
       ];
       const selM = (gf && gf.size > 0) ? [...gf] : null;
       function monthlySum(months) {
@@ -3541,7 +3597,6 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         const allTrs = table.querySelectorAll('tbody tr');
         const zoneRows = table.querySelectorAll('tbody tr[data-zone-row]');
         const aoRows = table.querySelectorAll('tbody tr[data-ao-row]');
-        // Verify zone totals == sum of AO summaries (math integrity check)
         let zoneAoMathOk = true;
         for (const [zone, aoMap] of groupedRows) {
           const zSum = zoneSummaries.get(zone) || {lt:0,rt:0,ld:0,rd:0};
@@ -3552,7 +3607,6 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           }
           if (Math.abs(zSum.lt - aoLt) > 0.01 || Math.abs(zSum.rd - aoRd) > 0.01) { zoneAoMathOk = false; break; }
         }
-        // Verify AO totals == sum of model rows
         let aoModelMathOk = true;
         for (const [zone, aoMap] of groupedRows) {
           for (const [ao, rows] of aoMap) {
@@ -3580,7 +3634,8 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         zone, aoCt: aoMap.size, modelCt: [...aoMap.values()].reduce((s,arr)=>s+arr.length,0)
       }));
       const result = {
-        selectedTdMonth: tdMonth,
+        selectedTdMonths: [...tdMonths],
+        isAllSelected,
         effectiveDeliveryMonths: effectiveDeliveryMonths===null ? 'All hero months (Aug–Mar)' : effectiveDeliveryMonths.length===0 ? '∅ (global/TD month conflict → 0 delivery)' : effectiveDeliveryMonths.join(', '),
         targetPeriod,
         globalMonthsRibbon: selM ? selM.join(', ') : '(empty / all)',
@@ -3607,7 +3662,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         hierarchyZones, domQA,
       };
       console.group('[HERO Target vs Delivery QA]');
-      console.log('Tab month filter (tdMonth):', result.selectedTdMonth);
+      console.log('Selected months:', result.selectedTdMonths.length ? result.selectedTdMonths.join(' + ') : 'All');
       console.log('Global months ribbon:', result.globalMonthsRibbon);
       console.log('Target period:', result.targetPeriod);
       console.log('Effective delivery months:', result.effectiveDeliveryMonths);
@@ -3634,7 +3689,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       console.groupEnd();
       return result;
     };
-  }, [allRows, summaryTotals, filters, rawJoined, tdMonth, groupedRows, flatRows, aoSummaries]);
+  }, [allRows, summaryTotals, filters, rawJoined, tdMonths, isAllSelected, groupedRows, flatRows, aoSummaries]);
 
   // Accordion callbacks
   const toggleZone = useCallback(zone => {
@@ -3680,16 +3735,16 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     );
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([hdr+csvRows.join('\n')],{type:'text/csv'}));
-    a.download = 'Hero_TvD_Flat_'+(tdMonth==='all'?'AllMonths':tdMonth.replace(/'/g,''))+'.csv';
+    a.download = 'Hero_TvD_Flat_'+(isAllSelected?'AllMonths':[...tdMonths].join('_').replace(/'/g,''))+'.csv';
     a.click();
-  }, [flatRows, tdMonth]);
+  }, [flatRows, tdMonths, isAllSelected]);
 
   const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
   const fmtTgt = n => n===0?'—':Nf(Math.round(n));
   const fmtAch = p => p===null?'—':p.toFixed(1)+'%';
-  const selMonthLabel = tdMonth !== 'all'
-    ? tdMonth
-    : (filters.months && filters.months.size > 0) ? [...filters.months].join(', ') : 'All Months (Aug–Mar)';
+  const selMonthLabel = isAllSelected
+    ? ((filters.months && filters.months.size > 0) ? [...filters.months].join(', ') : 'All Months (Aug–Mar)')
+    : [...tdMonths].join(' + ');
 
   const thSt = {
     background:'linear-gradient(135deg,#1E3A8A 0%,#2563EB 100%)',
@@ -3843,10 +3898,10 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       ce('button',{onClick:collapseAll,style:{padding:'4px 10px',borderRadius:14,background:'#475569',color:'#fff',border:'none',fontSize:9.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}},'-Collapse All'),
       ce('div',{style:{width:1,height:16,background:'#CBD5E1',margin:'0 2px'}}),
       TD_MONTH_BTNS.map(lbl =>
-        ce('button',{key:lbl,onClick:()=>setTdMonth(lbl),style:{
+        ce('button',{key:lbl,onClick:()=>toggleTdMonth(lbl),style:{
           padding:'4px 9px',borderRadius:14,
-          background:tdMonth===lbl?'#1E3A8A':'#E2E8F0',
-          color:tdMonth===lbl?'#fff':'#374151',
+          background:(lbl==='all'?isAllSelected:tdMonths.has(lbl))?'#1E3A8A':'#E2E8F0',
+          color:(lbl==='all'?isAllSelected:tdMonths.has(lbl))?'#fff':'#374151',
           border:'none',fontSize:9.5,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
         }},lbl==='all'?'All':lbl)
       ),
@@ -3927,6 +3982,15 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
               ? ce('tr',{key:'nd'},ce('td',{colSpan:9,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},
                   flatSearch.trim()?'No matches for "'+flatSearch.trim()+'"':'No data'))
               : [
+                  ce('tr',{key:'flat-subtotal',style:{background:'#1E3A8A',position:'sticky',top:0,zIndex:1}},
+                    ce('td',{colSpan:3,style:{padding:'7px 10px',fontSize:11,color:'#fff',fontWeight:700}},'Σ Subtotal ('+flatRows.length+' rows)'),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,color:'#fff',fontWeight:700}},fmtTgt(flatTotals.lt)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,color:'#fff',fontWeight:700}},fmtTgt(flatTotals.rt)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff'}},Nf(flatTotals.ld)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff'}},Nf(flatTotals.rd)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftLa!==null?pctColor(ftLa):'rgba(255,255,255,.6)'}},fmtAch(ftLa)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftRa!==null?pctColor(ftRa):'rgba(255,255,255,.6)'}},fmtAch(ftRa)),
+                  ),
                   ...flatRows.map((r,idx) => {
                     const bg = idx%2===0?'#fff':'#f8fafc';
                     return ce('tr',{key:r.zone+'\x00'+r.ao+'\x00'+r.model+'\x00'+idx,style:{borderBottom:'1px solid #e2e8f0'}},
@@ -3941,15 +4005,6 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg}},fmtAch(r.retailAch)),
                     );
                   }),
-                  ce('tr',{key:'flat-total',style:{background:'#1e293b',borderTop:'2px solid #334155'}},
-                    ce('td',{colSpan:3,style:{padding:'7px 10px',fontSize:11,color:'#fff',fontWeight:700}},'Total ('+flatRows.length+' rows)'),
-                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,color:'#fff'}},fmtTgt(flatTotals.lt)),
-                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,color:'#fff'}},fmtTgt(flatTotals.rt)),
-                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff'}},Nf(flatTotals.ld)),
-                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff'}},Nf(flatTotals.rd)),
-                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftLa!==null?pctColor(ftLa):'#94A3B8'}},fmtAch(ftLa)),
-                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftRa!==null?pctColor(ftRa):'#94A3B8'}},fmtAch(ftRa)),
-                  ),
                 ]
           )
         )
