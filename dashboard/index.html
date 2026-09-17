@@ -237,6 +237,7 @@ const HERO_LEAD_MASTER_BY_MONTH = {
 
 const HERO_SHEETS_CONFIG = Object.freeze({
   RETAIL_URL: "https://docs.google.com/spreadsheets/d/1ZWBlzxX-g2R5iCcrsGUWrqSvxIHcchFHtajDDPcFJgE/edit?gid=0#gid=0",
+  NON_SCOPE_RETAIL_URL: "https://docs.google.com/spreadsheets/d/1ZWBlzxX-g2R5iCcrsGUWrqSvxIHcchFHtajDDPcFJgE/edit?gid=1299063631#gid=1299063631",
   AUTO_SYNC_ON_LOAD: true,
 });
 
@@ -848,6 +849,45 @@ function joinHeroData(leadResult,retailResult){
     retailRawKeySamples:retailDiag.rawKeySamples,keyMatchSamples,
     retailKeyCount:retailKeySet.size,leadKeyCount:leadKeySet.size,
     matched,unmatched,multiRetail}};
+}
+
+function parseHeroNonScopeRetailRows(raw, joinedRows) {
+  if (!raw.length || !joinedRows.length) return [];
+  const leadMap = new Map();
+  for (const r of joinedRows) leadMap.set(r.opty_id, r);
+  const keyMap = {};
+  Object.keys(raw[0]).forEach(rk => { keyMap[rk.toLowerCase().replace(/\s+/g,' ').trim()] = rk; });
+  function get(r, keys) {
+    for (const k of (Array.isArray(keys)?keys:[keys])) {
+      const rk = keyMap[k.toLowerCase().replace(/\s+/g,' ').trim()];
+      if (rk !== undefined) return String(r[rk]||'').trim();
+    }
+    return '';
+  }
+  const seen = new Set();
+  const rows = [];
+  for (const r of raw) {
+    const sourceLeadId = get(r,['sourcelead id','sourcelead_id','source lead id','source_lead_id','sourceleadid','lead id','leadid','optyid','opty id','opty_id']);
+    if (!sourceLeadId) continue;
+    const lead = leadMap.get(sourceLeadId);
+    if (!lead) continue;
+    const invoiceMonth = normalizeHeroMonth(get(r,['invoice month','invoicemonth','invoice_month','performance month','performancemonth','retail month','retailmonth','month']));
+    if (!invoiceMonth) continue;
+    // Lead Categorisation from NS sheet (e.g. "Direct Push / L1 Nurtured" or similar).
+    // Do NOT use web_id/webid aliases — those are different concepts.
+    // Fallback: Lead Categorisation from Lead Master (stored as lead.webId — "Direct Push / L1 Nurtured").
+    const leadCatFromSheet = get(r,['lead categorisation','lead categorization','lead_categorisation','lead_categorization','leadcategorisation','leadcat','lead cat','direct push/l1 nurtured','direct push/ l1 nurtured','direct push / l1 nurtured']);
+    const leadCat = leadCatFromSheet || lead.webId || 'Unknown';
+    const invoicedModel = get(r,['invoiced model','invoicedmodel','invoiced_model','model','vehicle model','vehicle_model','model name','modelname']);
+    // Exact-row dedup: only remove rows where every significant field is identical.
+    // Same SourceLeadId with different invoice/model/category = separate retail records (kept).
+    const allVals = Object.values(r).map(v=>String(v==null?'':v)).join('\x00');
+    const dedupKey = allVals;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+    rows.push({opty_id:sourceLeadId,source:lead.source,state:lead.state,ao:lead.ao,city:lead.city,region:lead.region,lead_month:lead.lead_month,lt:lead.lt,model:lead.model,invoiceMonth,leadCat,invoicedModel});
+  }
+  return rows;
 }
 
 function HeroDiagnostics({d}){
@@ -2284,7 +2324,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
 /* ════════════════════════════════════════════════════════════════════
    SOURCE ANALYSIS TAB
    ════════════════════════════════════════════════════════════════════ */
-const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months, RT, onDetailedCsv }) {
+const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months, RT, onDetailedCsv, nsRetailRows }) {
   const { maps, sm, univ: univRaw, csm: csmRaw } = data;
   const univ = univRaw || [];
   const csm  = csmRaw  || [];
@@ -2389,7 +2429,26 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         const c = bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
       }
     }
-    if (gL === 0 && gR === 0) return null;
+    // Pass 3: Non-Scope Retail (NR) — iterate nsRetailRows, filter by invoiceMonth + active filters
+    const nsRows = nsRetailRows || [];
+    const nrBySrc = new Map();
+    let gNR = 0;
+    const allS3 = !filters.sources || filters.sources.size === 0;
+    const allSt3 = !filters.states  || filters.states.size  === 0;
+    const allCt3 = !filters.cities  || filters.cities.size  === 0;
+    const allLT3 = !filters.leadTypes || filters.leadTypes.size === 0;
+    const allMd3 = !filters.models  || filters.models.size  === 0;
+    for (const r of nsRows) {
+      if (r.invoiceMonth !== M) continue;
+      if (!allS3  && (filters.sources   === FILTER_CLEARED || !filters.sources.has(r.source)))   continue;
+      if (!allSt3 && (filters.states    === FILTER_CLEARED || !filters.states.has(r.state)))     continue;
+      if (!allCt3 && (filters.cities    === FILTER_CLEARED || !filters.cities.has(r.city)))      continue;
+      if (!allLT3 && (filters.leadTypes === FILTER_CLEARED || !filters.leadTypes.has(r.lt)))     continue;
+      if (!allMd3 && (filters.models    === FILTER_CLEARED || !filters.models.has(r.model)))     continue;
+      gNR++;
+      nrBySrc.set(r.source, (nrBySrc.get(r.source)||0)+1);
+    }
+    if (gL === 0 && gR === 0 && gNR === 0) return null;
     const sorted = [...bySrc.entries()].sort((a,b) => b[1][0]-a[1][0]);
     const grand = fin(gL, gR);
     const csvSorted = [...bySrc.entries()].sort((a,b)=>b[1][0]-a[1][0]);
@@ -2398,9 +2457,9 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         ce('div', { className:'section-title', style:{marginBottom:0} }, M),
         ce('div',{style:{display:'flex',gap:0}},
           ce(CsvBtn, { onClick:()=>{
-            const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
-            csvSorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-            aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
+            const aoa=[['Source','Leads','Retail','L.Contrib%','L2R%','Non-Scope R']];
+            csvSorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1),nrBySrc.get(src)||0]);});
+            aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0,gNR]);
             exportCsv(aoa,'Hero_Source_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
           }}),
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', M) })
@@ -2416,6 +2475,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
               ce('th',null,'Retail'),
               ce('th',null,'R.Contrib%'),
               ce('th',null,'L2R%'),
+              ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
             )
           ),
           ce('tbody', null,
@@ -2428,6 +2488,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
                 ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,gR>0?Pf(tot.r/gR*100):'—'),
                 ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
+                ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(nrBySrc.get(src)||0)),
               );
             }),
             ce('tr',{key:'gtotal',className:'total-row'},
@@ -2437,12 +2498,13 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
               ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(grand.r)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
+              ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(gNR)),
             )
           )
         )
       )
     );
-  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF]);
+  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, nsRetailRows]);
 
   const crossMonthTotals = useMemo(() => {
     const allS = !filters.sources || filters.sources.size === 0;
@@ -2530,9 +2592,28 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         const c=bySrc.get(src)||[0,0]; c[1]+=r; bySrc.set(src,c);
       }
     }
+    // Pass 3 (cross-month): Non-Scope Retail
+    const nsRows2 = nsRetailRows || [];
+    const nrBySrc2 = new Map();
+    let gNR2 = 0;
+    const allS3b = !filters.sources || filters.sources.size === 0;
+    const allSt3b = !filters.states  || filters.states.size  === 0;
+    const allCt3b = !filters.cities  || filters.cities.size  === 0;
+    const allLT3b = !filters.leadTypes || filters.leadTypes.size === 0;
+    const allMd3b = !filters.models  || filters.models.size  === 0;
+    for (const r of nsRows2) {
+      if (!mSet.has(r.invoiceMonth)) continue;
+      if (!allS3b  && (filters.sources   === FILTER_CLEARED || !filters.sources.has(r.source)))   continue;
+      if (!allSt3b && (filters.states    === FILTER_CLEARED || !filters.states.has(r.state)))     continue;
+      if (!allCt3b && (filters.cities    === FILTER_CLEARED || !filters.cities.has(r.city)))      continue;
+      if (!allLT3b && (filters.leadTypes === FILTER_CLEARED || !filters.leadTypes.has(r.lt)))     continue;
+      if (!allMd3b && (filters.models    === FILTER_CLEARED || !filters.models.has(r.model)))     continue;
+      gNR2++;
+      nrBySrc2.set(r.source, (nrBySrc2.get(r.source)||0)+1);
+    }
     const sorted = [...bySrc.entries()].sort((a,b)=>b[1][0]-a[1][0]);
-    return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted };
-  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, months]);
+    return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted, nrBySrc:nrBySrc2, gNR:gNR2 };
+  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, months, nsRetailRows]);
 
   return ce('div', {className:'fade-up'},
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
@@ -2540,9 +2621,9 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Source Summary'),
         ce('div',{style:{display:'flex',gap:0}},
           ce(CsvBtn, { onClick:()=>{
-            const aoa=[['Source','Leads','Retail','Contrib%','L2R%']];
-            crossMonthTotals.sorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
+            const aoa=[['Source','Leads','Retail','L.Contrib%','L2R%','Non-Scope R']];
+            crossMonthTotals.sorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1),crossMonthTotals.nrBySrc.get(src)||0]);});
+            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1),crossMonthTotals.gNR]);
             exportCsv(aoa,'Hero_Source_AllMonths.csv');
           }}),
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', null) })
@@ -2555,6 +2636,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
             ce('th',null,'Leads'), ce('th',null,'L.Contrib%'),
             ce('th',null,'Retail'), ce('th',null,'R.Contrib%'),
             ce('th',null,'L2R%'),
+            ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
           )),
           ce('tbody', null,
             ...crossMonthTotals.sorted.map(([src,[l,r]]) => {
@@ -2566,6 +2648,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
                 ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,crossMonthTotals.r>0?Pf(tot.r/crossMonthTotals.r*100):'—'),
                 ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
+                ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(crossMonthTotals.nrBySrc.get(src)||0)),
               );
             }),
             ce('tr',{key:'gtotal',className:'total-row'},
@@ -2575,6 +2658,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
               ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(crossMonthTotals.r)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#D97706',fontWeight:700}},crossMonthTotals.l2r>0?Pf(crossMonthTotals.l2r):'—'),
+              ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(crossMonthTotals.gNR)),
             )
           )
         )
@@ -2587,7 +2671,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
 /* ════════════════════════════════════════════════════════════════════
    WEB ID TAB  (Direct Push / L1 Nurtured dimension)
    ════════════════════════════════════════════════════════════════════ */
-const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDetailedCsv, rawJoined, leadsMode, viewerMode }) {
+const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDetailedCsv, rawJoined, leadsMode, viewerMode, nsRetailRows }) {
   const { maps, wm: wmRaw, wuniv: wunivRaw, cwm: cwmRaw } = data;
   const wuniv = wunivRaw || [];
   const cwm   = cwmRaw   || [];
@@ -2627,7 +2711,26 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
         const c = byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
       }
     }
-    if (gL === 0 && gR === 0) return null;
+    // NR pass: group by leadCat, filter by invoiceMonth
+    const nsWRows = nsRetailRows || [];
+    const nrByWid = new Map();
+    let gNRW = 0;
+    const allS3w = !filters.sources || filters.sources.size === 0;
+    const allSt3w = !filters.states  || filters.states.size  === 0;
+    const allCt3w = !filters.cities  || filters.cities.size  === 0;
+    const allLT3w = !filters.leadTypes || filters.leadTypes.size === 0;
+    const allMd3w = !filters.models  || filters.models.size  === 0;
+    for (const r of nsWRows) {
+      if (r.invoiceMonth !== M) continue;
+      if (!allS3w  && (filters.sources   === FILTER_CLEARED || !filters.sources.has(r.source)))   continue;
+      if (!allSt3w && (filters.states    === FILTER_CLEARED || !filters.states.has(r.state)))     continue;
+      if (!allCt3w && (filters.cities    === FILTER_CLEARED || !filters.cities.has(r.city)))      continue;
+      if (!allLT3w && (filters.leadTypes === FILTER_CLEARED || !filters.leadTypes.has(r.lt)))     continue;
+      if (!allMd3w && (filters.models    === FILTER_CLEARED || !filters.models.has(r.model)))     continue;
+      gNRW++;
+      nrByWid.set(r.leadCat, (nrByWid.get(r.leadCat)||0)+1);
+    }
+    if (gL === 0 && gR === 0 && gNRW === 0) return null;
     const sorted = [...byWid.entries()].sort((a,b) => b[1][0]-a[1][0]);
     const grand = fin(gL, gR);
     return ce('div', { key:M, className:'card', style:{padding:'16px 18px',marginBottom:14} },
@@ -2635,9 +2738,9 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
         ce('div', { className:'section-title', style:{marginBottom:0} }, M),
         ce('div',{style:{display:'flex',gap:0}},
           ce(CsvBtn, { onClick:()=>{
-            const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
-            sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-            aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0]);
+            const aoa=[['Web ID','Leads','Retail','L.Contrib%','L2R%','Non-Scope R']];
+            sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1),nrByWid.get(wid)||0]);});
+            aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0,gNRW]);
             exportCsv(aoa,'Hero_WebID_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
           }}),
           rawJoined && ce(DetailedCsvBtn, { onClick:()=>exportLeadCategDetailedCsv(rawJoined,filters,RT,leadsMode,'Hero_LeadCateg_Detailed_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv',M) })
@@ -2653,6 +2756,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
               ce('th',null,'Retail'),
               ce('th',null,'R.Contrib%'),
               ce('th',null,'L2R%'),
+              ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
             )
           ),
           ce('tbody', null,
@@ -2665,6 +2769,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
                 ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,gR>0?Pf(tot.r/gR*100):'—'),
                 ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
+                ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(nrByWid.get(wid)||0)),
               );
             }),
             ce('tr',{key:'gtotal',className:'total-row'},
@@ -2674,12 +2779,13 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
               ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(grand.r)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
+              ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(gNRW)),
             )
           )
         )
       )
     );
-  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF]);
+  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF, nsRetailRows]);
 
   const crossMonthTotals = useMemo(() => {
     const univF = makeUnivFilter(filters);
@@ -2711,9 +2817,28 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
         const c=byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
       }
     }
+    // NR cross-month pass
+    const nsWRows2 = nsRetailRows || [];
+    const nrByWid2 = new Map();
+    let gNRW2 = 0;
+    const allS3w2 = !filters.sources || filters.sources.size === 0;
+    const allSt3w2 = !filters.states  || filters.states.size  === 0;
+    const allCt3w2 = !filters.cities  || filters.cities.size  === 0;
+    const allLT3w2 = !filters.leadTypes || filters.leadTypes.size === 0;
+    const allMd3w2 = !filters.models  || filters.models.size  === 0;
+    for (const r of nsWRows2) {
+      if (!mSet.has(r.invoiceMonth)) continue;
+      if (!allS3w2  && (filters.sources   === FILTER_CLEARED || !filters.sources.has(r.source)))   continue;
+      if (!allSt3w2 && (filters.states    === FILTER_CLEARED || !filters.states.has(r.state)))     continue;
+      if (!allCt3w2 && (filters.cities    === FILTER_CLEARED || !filters.cities.has(r.city)))      continue;
+      if (!allLT3w2 && (filters.leadTypes === FILTER_CLEARED || !filters.leadTypes.has(r.lt)))     continue;
+      if (!allMd3w2 && (filters.models    === FILTER_CLEARED || !filters.models.has(r.model)))     continue;
+      gNRW2++;
+      nrByWid2.set(r.leadCat, (nrByWid2.get(r.leadCat)||0)+1);
+    }
     const sorted = [...byWid.entries()].sort((a,b)=>b[1][0]-a[1][0]);
-    return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted };
-  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF, months]);
+    return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted, nrByWid:nrByWid2, gNRW:gNRW2 };
+  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF, months, nsRetailRows]);
 
   return ce('div', {className:'fade-up'},
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
@@ -2721,9 +2846,9 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
         ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Web ID Summary'),
         ce('div',{style:{display:'flex',gap:0}},
           ce(CsvBtn, { onClick:()=>{
-            const aoa=[['Web ID','Leads','Retail','Contrib%','L2R%']];
-            crossMonthTotals.sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1)]);});
-            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1)]);
+            const aoa=[['Web ID','Leads','Retail','L.Contrib%','L2R%','Non-Scope R']];
+            crossMonthTotals.sorted.forEach(([wid,[l,r]])=>{const tot=fin(l,r);aoa.push([wid,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1),crossMonthTotals.nrByWid.get(wid)||0]);});
+            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1),crossMonthTotals.gNRW]);
             exportCsv(aoa,'Hero_WebID_AllMonths.csv');
           }}),
           rawJoined && ce(DetailedCsvBtn, { onClick:()=>exportLeadCategDetailedCsv(rawJoined,filters,RT,leadsMode,'Hero_LeadCateg_Detailed_AllMonths.csv',null) })
@@ -2736,6 +2861,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
             ce('th',null,'Leads'), ce('th',null,'L.Contrib%'),
             ce('th',null,'Retail'), ce('th',null,'R.Contrib%'),
             ce('th',null,'L2R%'),
+            ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
           )),
           ce('tbody', null,
             ...crossMonthTotals.sorted.map(([wid,[l,r]]) => {
@@ -2747,6 +2873,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
                 ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,crossMonthTotals.r>0?Pf(tot.r/crossMonthTotals.r*100):'—'),
                 ce('td',{style:{color:'#D97706',fontWeight:700}},tot.l2r>0?Pf(tot.l2r):'—'),
+                ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(crossMonthTotals.nrByWid.get(wid)||0)),
               );
             }),
             ce('tr',{key:'gtotal',className:'total-row'},
@@ -2756,6 +2883,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
               ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(crossMonthTotals.r)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#D97706',fontWeight:700}},crossMonthTotals.l2r>0?Pf(crossMonthTotals.l2r):'—'),
+              ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(crossMonthTotals.gNRW)),
             )
           )
         )
@@ -3076,7 +3204,7 @@ const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, month
 /* ════════════════════════════════════════════════════════════════════
    STATE × SOURCE TAB  (Zone → State → City → Dealer drill-down)
    ════════════════════════════════════════════════════════════════════ */
-const StateSourceTab = React.memo(function StateSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv, rawJoined, leadsMode }) {
+const StateSourceTab = React.memo(function StateSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv, rawJoined, leadsMode, nsRetailRows }) {
   const { maps } = data;
 
   const allSrcs   = useMemo(() => [...new Set(maps.src)], [maps]);
@@ -3132,13 +3260,41 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       stEntry.l++; stEntry.r+=ret;
       const ssc=stEntry.bySrc.get(src)||[0,0]; ssc[0]++; ssc[1]+=ret; stEntry.bySrc.set(src,ssc);
     }
-    return { regionMap, gL, gR, grandSrc };
-  }, [rawJoined, filters, mSet, RT, leadsMode]);
+    // NR second loop: Non-Scope Retail, filtered by invoiceMonth
+    const nsRRows = nsRetailRows || [];
+    let gNRS = 0;
+    const allS4 = !filters.sources || filters.sources.size === 0;
+    const allSt4 = !filters.states  || filters.states.size  === 0;
+    const allCt4 = !filters.cities  || filters.cities.size  === 0;
+    const allLT4 = !filters.leadTypes || filters.leadTypes.size === 0;
+    const allMd4 = !filters.models  || filters.models.size  === 0;
+    for (const r of nsRRows) {
+      if (M !== null) { if (r.invoiceMonth !== M) continue; }
+      else            { if (!mSet.has(r.invoiceMonth)) continue; }
+      if (!allS4  && (filters.sources   === FILTER_CLEARED || !filters.sources.has(r.source)))   continue;
+      if (!allSt4 && (filters.states    === FILTER_CLEARED || !filters.states.has(r.state)))     continue;
+      if (!allCt4 && (filters.cities    === FILTER_CLEARED || !filters.cities.has(r.city)))      continue;
+      if (!allLT4 && (filters.leadTypes === FILTER_CLEARED || !filters.leadTypes.has(r.lt)))     continue;
+      if (!allMd4 && (filters.models    === FILTER_CLEARED || !filters.models.has(r.model)))     continue;
+      gNRS++;
+      const region = (r.region || '').trim() || 'Unknown';
+      const state  = (r.state  || '').trim() || 'Unknown';
+      if (!regionMap.has(region)) regionMap.set(region, {l:0,r:0,nr:0,bySrc:new Map(),stateMap:new Map()});
+      const reg = regionMap.get(region);
+      if (reg.nr === undefined) reg.nr = 0;
+      reg.nr++;
+      if (!reg.stateMap.has(state)) reg.stateMap.set(state, {l:0,r:0,nr:0,bySrc:new Map()});
+      const stEntry = reg.stateMap.get(state);
+      if (stEntry.nr === undefined) stEntry.nr = 0;
+      stEntry.nr++;
+    }
+    return { regionMap, gL, gR, gNRS, grandSrc };
+  }, [rawJoined, nsRetailRows, filters, mSet, RT, leadsMode]);
 
   // Unified renderer for both All Months (M=null) and individual months (M=string).
   const renderGrid = useCallback((M) => {
-    const { regionMap, gL, gR, grandSrc } = buildHierarchy(M);
-    if (gL === 0 && gR === 0) return null;
+    const { regionMap, gL, gR, gNRS, grandSrc } = buildHierarchy(M);
+    if (gL === 0 && gR === 0 && (!gNRS || gNRS === 0)) return null;
     const grandRL = gR;
     const grand = fin(gL, gR);
 
@@ -3179,7 +3335,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     const mk = M===null ? 'all' : M;
     const hdr1 = [
       ce('th',{key:'dim',className:'left',rowSpan:2,style:{minWidth:220,zIndex:3,background:'#1D4ED8',color:'#fff'}},'Region / State'),
-      ce('th',{key:'tot',colSpan:5,style:{background:'#1D4ED8',color:'#fff'}},'TOTAL'),
+      ce('th',{key:'tot',colSpan:6,style:{background:'#1D4ED8',color:'#fff'}},'TOTAL'),
       ...(viewerMode ? [] : srcGroups.map(grp => {
         const exp = expandedGrps.has(grp.id);
         const sgs = grp.subGroups.filter(sg=>sg.srcs.length>0);
@@ -3193,6 +3349,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       ce('th',{key:'tl',className:'sub'},'Leads'),ce('th',{key:'tlc',className:'sub'},'L.Contrib%'),
       ce('th',{key:'tr',className:'sub'},'Retail'),ce('th',{key:'trc',className:'sub'},'R.Contrib%'),
       ce('th',{key:'tl2r',className:'sub'},'L2R%'),
+      ce('th',{key:'tnr',className:'sub',style:{color:'#7C3AED'}},'Non-Scope R'),
       ...(viewerMode ? [] : srcGroups.flatMap(grp => {
         const exp = expandedGrps.has(grp.id);
         if (!exp) return [
@@ -3232,6 +3389,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
         ce('td',null,Nf(reg.l)),ce('td',null,gL>0?Pf(reg.l/gL*100):'—'),
         ce('td',{style:{color:'#1565C0',fontWeight:700}},Nf(reg.r)),ce('td',null,grandRL>0?Pf(reg.r/grandRL*100):'—'),
         ce('td',{style:{color:'#D97706',fontWeight:700}},regL2R>0?Pf(regL2R):'—'),
+        ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(reg.nr||0)),
         ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(regSrcMap,grp)))
       ));
       if (!isRegOpen) continue;
@@ -3249,6 +3407,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
           ce('td',null,Nf(stEntry.l)),ce('td',null,gL>0?Pf(stEntry.l/gL*100):'—'),
           ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(stEntry.r)),ce('td',null,grandRL>0?Pf(stEntry.r/grandRL*100):'—'),
           ce('td',{style:{color:'#D97706',fontWeight:600}},stL2R>0?Pf(stL2R):'—'),
+          ce('td',{style:{color:'#7C3AED',fontWeight:600}},Nf(stEntry.nr||0)),
           ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(stSrcMap,grp,reg.l,reg.r)))
         ));
       }
@@ -3260,10 +3419,11 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       ce('td',null,Nf(gL)),ce('td',null,'100.0%'),
       ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(gR)),ce('td',null,'100.0%'),
       ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
+      ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(gNRS||0)),
       ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(grandSrcMap,grp)))
     ));
 
-    return { grand, hdr1, hdr2, bodyRows, regionMap };
+    return { grand, hdr1, hdr2, bodyRows, regionMap, gNRS:gNRS||0 };
   }, [buildHierarchy, expandedGrps, openRegion, srcGroups, viewerMode, onToggleGrp, onClickRegion]);
 
   // All-months grid drives the summary card (same logic as monthly grids, M=null)
@@ -5623,6 +5783,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
   const clientMode=role==='client';
   const [data,setData]=useState(null);
   const [rawJoined,setRawJoined]=useState(null);
+  const [nsRetailRows,setNsRetailRows]=useState([]);
   const [syncing,setSyncing]=useState(false);
   const [syncErr,setSyncErr]=useState(null);
   const [lastSynced,setLastSynced]=useState(null);
@@ -5642,9 +5803,10 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     try{
       const monthEntries=Object.entries(HERO_LEAD_MASTER_BY_MONTH);
       if(!monthEntries.length)throw new Error('No Lead Master sheets configured in HERO_LEAD_MASTER_BY_MONTH.');
-      const[monthCsvs,retailCSV]=await Promise.all([
+      const[monthCsvs,retailCSV,nsRetailCSV]=await Promise.all([
         Promise.all(monthEntries.map(([,url])=>fetchSheetCsv(url))),
         fetchSheetCsv(HERO_SHEETS_CONFIG.RETAIL_URL),
+        fetchSheetCsv(HERO_SHEETS_CONFIG.NON_SCOPE_RETAIL_URL),
       ]);
       const leadRaw=monthCsvs.flatMap(csv=>parseCsvToRows(csv));
       const retailRaw=parseCsvToRows(retailCSV);
@@ -5655,6 +5817,67 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       if(!joined.length)throw new Error('No rows after join. Check opty_id / sourceLeadId column names.');
       const payload=buildPayload(joined);
       setRawJoined(joined);
+      const nsRaw=parseCsvToRows(nsRetailCSV);
+      const nsQualified=parseHeroNonScopeRetailRows(nsRaw,joined);
+      setNsRetailRows(nsQualified);
+      // Diagnostic hooks — assigned before any code that could throw
+      window._heroNsRetailRows=nsQualified;
+      {
+        const _src=new Map(),_im=new Map(),_lm=new Map(),_lc=new Map(),_st=new Map(),_ao=new Map();
+        nsQualified.forEach(r=>{
+          _src.set(r.source,(_src.get(r.source)||0)+1);
+          _im.set(r.invoiceMonth,(_im.get(r.invoiceMonth)||0)+1);
+          _lm.set(r.lead_month,(_lm.get(r.lead_month)||0)+1);
+          _lc.set(r.leadCat,(_lc.get(r.leadCat)||0)+1);
+          _st.set(r.state,(_st.get(r.state)||0)+1);
+          _ao.set(r.ao,(_ao.get(r.ao)||0)+1);
+        });
+        const _rawWithId=nsRaw.filter(r=>{const v=Object.values(r)[0];return !!v;}).length;
+        window._heroNsRetailQA={
+          rawRows:nsRaw.length,
+          qualifiedRows:nsQualified.length,
+          duplicateRowsDropped:_rawWithId-nsQualified.length,
+          bySource:Object.fromEntries([..._src.entries()].sort((a,b)=>b[1]-a[1])),
+          byInvoiceMonth:Object.fromEntries([..._im.entries()].sort()),
+          byLeadMonth:Object.fromEntries([..._lm.entries()].sort()),
+          byLeadCat:Object.fromEntries([..._lc.entries()].sort((a,b)=>b[1]-a[1])),
+          byState:Object.fromEntries([..._st.entries()].sort((a,b)=>b[1]-a[1])),
+          byAO:Object.fromEntries([..._ao.entries()].sort((a,b)=>b[1]-a[1])),
+        };
+      }
+      // [NS RETAIL QA] pipeline trace
+      console.group('[NS RETAIL QA] Non-Scope Retail — OEM CPS Retail Raw');
+      console.log('[NS RETAIL QA] Raw rows from sheet:',nsRaw.length);
+      console.log('[NS RETAIL QA] Qualified NR rows (after join+dedup):',nsQualified.length);
+      // By Source
+      const nrSrc=new Map();nsQualified.forEach(r=>{nrSrc.set(r.source,(nrSrc.get(r.source)||0)+1);});
+      console.log('[NS RETAIL QA] By Source:');[...nrSrc.entries()].sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>console.log('  '+k+': '+v));
+      // By Invoice Month
+      const nrIM=new Map();nsQualified.forEach(r=>{nrIM.set(r.invoiceMonth,(nrIM.get(r.invoiceMonth)||0)+1);});
+      console.log('[NS RETAIL QA] By Invoice Month:');[...nrIM.entries()].sort().forEach(([k,v])=>console.log('  '+k+': '+v));
+      // By Lead Month
+      const nrLM=new Map();nsQualified.forEach(r=>{nrLM.set(r.lead_month,(nrLM.get(r.lead_month)||0)+1);});
+      console.log('[NS RETAIL QA] By Lead Month:');[...nrLM.entries()].sort().forEach(([k,v])=>console.log('  '+k+': '+v));
+      // By Lead Categorisation
+      const nrLC=new Map();nsQualified.forEach(r=>{nrLC.set(r.leadCat,(nrLC.get(r.leadCat)||0)+1);});
+      console.log('[NS RETAIL QA] By Lead Categorisation:');[...nrLC.entries()].sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>console.log('  "'+k+'": '+v));
+      // By State
+      const nrSt=new Map();nsQualified.forEach(r=>{nrSt.set(r.state,(nrSt.get(r.state)||0)+1);});
+      console.log('[NS RETAIL QA] By State:');[...nrSt.entries()].sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>console.log('  '+k+': '+v));
+      // By AO
+      const nrAO=new Map();nsQualified.forEach(r=>{nrAO.set(r.ao,(nrAO.get(r.ao)||0)+1);});
+      console.log('[NS RETAIL QA] By AO:');[...nrAO.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20).forEach(([k,v])=>console.log('  '+k+': '+v));
+      // Dup check: how many raw rows were dropped
+      const nsAllKeys=nsRaw.filter(r=>{const sid=Object.values(r)[0];return !!sid;}).length;
+      console.log('[NS RETAIL QA] Raw rows with SourceLeadId (approx):',nsAllKeys,'→ dedup dropped:',(nsAllKeys-nsQualified.length));
+      // Existing Retail isolation check
+      const existingR=joined.filter(r=>r.isBooked).length;
+      console.log('[NS RETAIL QA] Existing Retail (isBooked in joined):',existingR,'— MUST be unchanged');
+      // Lead Categorisation source
+      const fromSheet=nsQualified.filter(r=>r.leadCat&&r.leadCat!=='Unknown').length;
+      const fromLeadMaster=nsQualified.length-fromSheet;
+      console.log('[NS RETAIL QA] leadCat populated (from NS sheet or Lead Master):',fromSheet,'/ fallback to Unknown:',fromLeadMaster);
+      console.groupEnd();
       // Attach column/sample info to diagnostics for in-page display
       const rd2=retailResult.diagnostics;
       diag.leadCols=leadResult.diagnostics.allLeadCols||[];
@@ -5927,11 +6150,11 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     const props={data:effectiveData,filters,months,RT,viewerMode:noSource,clientMode,onDetailedCsv:clientDetailedCsv};
     switch(tab){
       case 'overview':    return ce(OverviewTab,      props);
-      case 'source':      return ce(SourceTab,        {...props,rawData:data});
-      case 'webid':       return ce(WebIdTab,         {...props,rawJoined,leadsMode});
+      case 'source':      return ce(SourceTab,        {...props,rawData:data,nsRetailRows});
+      case 'webid':       return ce(WebIdTab,         {...props,rawJoined,leadsMode,nsRetailRows});
       case 'ltxsrc':      return ce(LTSourceTab,      props);
       case 'modelxsrc':   return ce(ModelSourceTab,   props);
-      case 'statexsrc':   return ce(StateSourceTab,   {...props,rawJoined,leadsMode});
+      case 'statexsrc':   return ce(StateSourceTab,   {...props,rawJoined,leadsMode,nsRetailRows});
       case 'cityxsrc':    return ce(CitySourceTab,    props);
       case 'statexmodel': return ce(StateModelTab,    props);
       case 'cityxmodel':  return ce(CityModelTab,     props);
@@ -5941,7 +6164,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
       case 'pivot':       return ce(PivotTab,         {...props,rawJoined,leadsMode});
       default: return null;
     }
-  },[tab,data,effectiveData,filters,months,RT,viewerMode,clientMode,onDetailedCsv,rawJoined,leadsMode]);
+  },[tab,data,effectiveData,filters,months,RT,viewerMode,clientMode,onDetailedCsv,rawJoined,leadsMode,nsRetailRows]);
 
   if(!effectiveData)return ce(HeroSyncScreen,{onSync:handleSync,syncing,syncErr});
 
