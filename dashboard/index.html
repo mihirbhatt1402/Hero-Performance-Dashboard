@@ -3600,6 +3600,24 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       if (purOk && (RT==='dms'?(isR&&r.callType==='dms'):RT==='co'?(isR&&r.callType==='co'):isR)) d.r++;
     }
 
+    // Enquiries accumulation: always lead_month, webId ∈ ENQUIRY_CAT, no purMdl filter
+    const enqMap = new Map();
+    for (const r of rawJoined) {
+      const enqM = r.lead_month;
+      if (selM !== null) { if (!selM.has(enqM)) continue; }
+      else               { if (!HERO_TARGET_MONTHS_SET.has(enqM)) continue; }
+      if (!ENQUIRY_CAT.has(String(r.webId||'').trim())) continue;
+      if (!allS   &&(sf  ===FILTER_CLEARED||!sf.has(r.source))) continue;
+      if (!allLT  &&(ltf ===FILTER_CLEARED||!ltf.has(r.lt)))   continue;
+      if (!allMdl &&(mdf ===FILTER_CLEARED||!mdf.has(r.model)))continue;
+      if (!allSt  &&(stf ===FILTER_CLEARED||!stf.has(r.state)))continue;
+      if (!allCity&&(cf  ===FILTER_CLEARED||!cf.has(r.city)))  continue;
+      const ao2   = heroNormTargetAo(r.ao||'');
+      const mdl2  = heroNormLeadModelForTD(r.model||'');
+      const k2    = ao2+'\x00'+mdl2;
+      enqMap.set(k2, (enqMap.get(k2)||0)+1);
+    }
+
     // --- Target computation: apply global model/state/city filters to targets ---
     // Precompute which target model names survive the model filter
     let filteredTargetModels = null; // null = all models pass
@@ -3660,8 +3678,9 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         const del = delMap.get(ao+'\x00'+model) || {l:0, r:0};
         const la = lt > 0 ? del.l/lt*100 : null;
         const ra = rt > 0 ? del.r/rt*100 : null;
+        const enq = enqMap.get(ao+'\x00'+model) || 0;
         rows.push({ ao, zone:aoData.zone, model, leadTarget:lt, retailTarget:rt,
-          leadsDelivered:del.l, retailsDelivered:del.r, leadAch:la, retailAch:ra });
+          leadsDelivered:del.l, retailsDelivered:del.r, leadAch:la, retailAch:ra, enq });
       }
     }
     return rows;
@@ -3670,8 +3689,8 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   // Summary totals (not affected by search box)
   const summaryTotals = useMemo(() => allRows.reduce((acc,r) => ({
     lt:acc.lt+r.leadTarget, rt:acc.rt+r.retailTarget,
-    ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered,
-  }), {lt:0, rt:0, ld:0, rd:0}), [allRows]);
+    ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered, enq:acc.enq+r.enq,
+  }), {lt:0, rt:0, ld:0, rd:0, enq:0}), [allRows]);
   const sumLa = summaryTotals.lt > 0 ? summaryTotals.ld/summaryTotals.lt*100 : null;
   const sumRa = summaryTotals.rt > 0 ? summaryTotals.rd/summaryTotals.rt*100 : null;
 
@@ -3698,9 +3717,9 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   const zoneSummaries = useMemo(() => {
     const m = new Map();
     for (const r of allRows) {
-      if (!m.has(r.zone)) m.set(r.zone, {lt:0,rt:0,ld:0,rd:0});
+      if (!m.has(r.zone)) m.set(r.zone, {lt:0,rt:0,ld:0,rd:0,enq:0});
       const s = m.get(r.zone);
-      s.lt+=r.leadTarget; s.rt+=r.retailTarget; s.ld+=r.leadsDelivered; s.rd+=r.retailsDelivered;
+      s.lt+=r.leadTarget; s.rt+=r.retailTarget; s.ld+=r.leadsDelivered; s.rd+=r.retailsDelivered; s.enq+=r.enq;
     }
     return m;
   }, [allRows]);
@@ -3709,9 +3728,9 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     const m = new Map();
     for (const r of allRows) {
       const k = r.zone+'\x00'+r.ao;
-      if (!m.has(k)) m.set(k, {lt:0,rt:0,ld:0,rd:0});
+      if (!m.has(k)) m.set(k, {lt:0,rt:0,ld:0,rd:0,enq:0});
       const s = m.get(k);
-      s.lt+=r.leadTarget; s.rt+=r.retailTarget; s.ld+=r.leadsDelivered; s.rd+=r.retailsDelivered;
+      s.lt+=r.leadTarget; s.rt+=r.retailTarget; s.ld+=r.leadsDelivered; s.rd+=r.retailsDelivered; s.enq+=r.enq;
     }
     return m;
   }, [allRows]);
@@ -3929,12 +3948,12 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   }, []);
 
   const onFlatExport = useCallback(() => {
-    const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
+    const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Enquiries,Lead Ach%,Retail Ach%\n';
     const csvRows = flatRows.map(r =>
       [r.zone, r.ao, r.model,
         r.leadTarget>0?r.leadTarget.toFixed(4):0,
         r.retailTarget>0?r.retailTarget.toFixed(4):0,
-        r.leadsDelivered, r.retailsDelivered,
+        r.leadsDelivered, r.retailsDelivered, r.enq,
         r.leadTarget>0&&r.leadAch!==null?r.leadAch.toFixed(1):'',
         r.retailTarget>0&&r.retailAch!==null?r.retailAch.toFixed(1):''].join(',')
     );
@@ -3948,29 +3967,29 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     const fTgt = n => n===0?'—':String(Math.round(n));
     const fAch = p => p===null?'—':p.toFixed(1)+'%';
     const calcAch = (ld,lt) => lt>0?ld/lt*100:null;
-    const aoa = [['Zone','AO','Model','Lead Target','Retail Target','Leads Delivered','Retails Delivered','Lead Achievement','Retail Achievement']];
+    const aoa = [['Zone','AO','Model','Lead Target','Retail Target','Leads Delivered','Retails Delivered','Enquiries','Lead Achievement','Retail Achievement']];
     for (const [zone, aoMap] of groupedRows) {
       const zIsOpen = expandedZones.has(zone);
-      const zSum = zoneSummaries.get(zone)||{lt:0,rt:0,ld:0,rd:0};
+      const zSum = zoneSummaries.get(zone)||{lt:0,rt:0,ld:0,rd:0,enq:0};
       if (!zIsOpen) {
-        aoa.push([zone,'—','—',fTgt(zSum.lt),fTgt(zSum.rt),zSum.ld,zSum.rd,fAch(calcAch(zSum.ld,zSum.lt)),fAch(calcAch(zSum.rd,zSum.rt))]);
+        aoa.push([zone,'—','—',fTgt(zSum.lt),fTgt(zSum.rt),zSum.ld,zSum.rd,zSum.enq,fAch(calcAch(zSum.ld,zSum.lt)),fAch(calcAch(zSum.rd,zSum.rt))]);
       } else {
         for (const [ao, modelRows] of aoMap) {
           const aoKey = zone+'\x00'+ao;
           const aIsOpen = expandedAos.has(aoKey);
-          const aSum = aoSummaries.get(aoKey)||{lt:0,rt:0,ld:0,rd:0};
+          const aSum = aoSummaries.get(aoKey)||{lt:0,rt:0,ld:0,rd:0,enq:0};
           if (!aIsOpen) {
-            aoa.push([zone,ao,'—',fTgt(aSum.lt),fTgt(aSum.rt),aSum.ld,aSum.rd,fAch(calcAch(aSum.ld,aSum.lt)),fAch(calcAch(aSum.rd,aSum.rt))]);
+            aoa.push([zone,ao,'—',fTgt(aSum.lt),fTgt(aSum.rt),aSum.ld,aSum.rd,aSum.enq,fAch(calcAch(aSum.ld,aSum.lt)),fAch(calcAch(aSum.rd,aSum.rt))]);
           } else {
             const sorted = [...modelRows].sort((a,b)=>a.model.localeCompare(b.model));
-            for (const r of sorted) aoa.push([r.zone,r.ao,r.model,fTgt(r.leadTarget),fTgt(r.retailTarget),r.leadsDelivered,r.retailsDelivered,fAch(r.leadAch),fAch(r.retailAch)]);
+            for (const r of sorted) aoa.push([r.zone,r.ao,r.model,fTgt(r.leadTarget),fTgt(r.retailTarget),r.leadsDelivered,r.retailsDelivered,r.enq,fAch(r.leadAch),fAch(r.retailAch)]);
           }
         }
       }
     }
     const la = summaryTotals.lt>0?summaryTotals.ld/summaryTotals.lt*100:null;
     const ra = summaryTotals.rt>0?summaryTotals.rd/summaryTotals.rt*100:null;
-    aoa.push(['Grand Total ('+allRows.length+' models)','','',fTgt(summaryTotals.lt),fTgt(summaryTotals.rt),summaryTotals.ld,summaryTotals.rd,fAch(la),fAch(ra)]);
+    aoa.push(['Grand Total ('+allRows.length+' models)','','',fTgt(summaryTotals.lt),fTgt(summaryTotals.rt),summaryTotals.ld,summaryTotals.rd,summaryTotals.enq,fAch(la),fAch(ra)]);
     exportCsv(aoa,'Hero_TvD_Grid_'+(isAllSelected?'AllMonths':[...tdMonths].join('_').replace(/'/g,''))+'.csv');
   }, [groupedRows, expandedZones, expandedAos, zoneSummaries, aoSummaries, allRows, summaryTotals, tdMonths, isAllSelected]);
 
@@ -4001,7 +4020,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
 
   // Upper table body builder — hierarchical pivot: Zone summary → AO summary → Model rows
   const buildBodyRows = () => {
-    if (!allRows.length) return [ce('tr',{key:'nd'},ce('td',{colSpan:9,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},'No data'))];
+    if (!allRows.length) return [ce('tr',{key:'nd'},ce('td',{colSpan:10,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},'No data'))];
     const result = [];
     const nR = {padding:'7px 8px',textAlign:'right',fontSize:11};
     const aC = {padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:700};
@@ -4027,6 +4046,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
         ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},fmtTgt(zSum.rt)),
         ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},Nf(zSum.ld)),
         ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},Nf(zSum.rd)),
+        ce('td',{style:{...nR,fontWeight:700,color:'#1E3A8A',...zbb}},Nf(zSum.enq||0)),
         ce('td',{style:{...aC,color:zLa!==null?pctColor(zLa):'#94A3B8',...zbb}},fmtAch(zLa)),
         ce('td',{style:{...aC,color:zRa!==null?pctColor(zRa):'#94A3B8',...zbb}},fmtAch(zRa)),
       ));
@@ -4053,6 +4073,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},fmtTgt(aSum.rt)),
           ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},Nf(aSum.ld)),
           ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},Nf(aSum.rd)),
+          ce('td',{style:{...nR,fontWeight:600,color:'#1E40AF',...abb}},Nf(aSum.enq||0)),
           ce('td',{style:{...aC,color:aLa!==null?pctColor(aLa):'#94A3B8',...abb}},fmtAch(aLa)),
           ce('td',{style:{...aC,color:aRa!==null?pctColor(aRa):'#94A3B8',...abb}},fmtAch(aRa)),
         ));
@@ -4071,6 +4092,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
             ce('td',{style:{...nR,background:bg,...mbb}},fmtTgt(r.retailTarget)),
             ce('td',{style:{...nR,fontWeight:r.leadsDelivered>0?600:400,background:bg,...mbb}},Nf(r.leadsDelivered)),
             ce('td',{style:{...nR,fontWeight:r.retailsDelivered>0?600:400,background:bg,...mbb}},Nf(r.retailsDelivered)),
+            ce('td',{style:{...nR,fontWeight:r.enq>0?600:400,background:bg,...mbb}},Nf(r.enq)),
             ce('td',{style:{...aC,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg,...mbb}},fmtAch(r.leadAch)),
             ce('td',{style:{...aC,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg,...mbb}},fmtAch(r.retailAch)),
           ));
@@ -4087,6 +4109,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,color:'#fff',background:'#1E293B'}},fmtTgt(summaryTotals.rt)),
       ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,fontWeight:700,color:'#fff',background:'#1E293B'}},Nf(summaryTotals.ld)),
       ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,fontWeight:700,color:'#fff',background:'#1E293B'}},Nf(summaryTotals.rd)),
+      ce('td',{style:{padding:'8px 10px',textAlign:'right',fontSize:12,fontWeight:700,color:'#fff',background:'#1E293B'}},Nf(summaryTotals.enq)),
       ce('td',{style:{padding:'8px 10px',textAlign:'center',fontSize:12,fontWeight:700,color:gtLa!==null?pctColor(gtLa):'#94A3B8',background:'#1E293B'}},fmtAch(gtLa)),
       ce('td',{style:{padding:'8px 10px',textAlign:'center',fontSize:12,fontWeight:700,color:gtRa!==null?pctColor(gtRa):'#94A3B8',background:'#1E293B'}},fmtAch(gtRa)),
     ));
@@ -4101,6 +4124,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     ce('th',{style:{...thSt,textAlign:'right'}},'Retail Target'),
     ce('th',{style:{...thSt,textAlign:'right'}},'Leads Delivered'),
     ce('th',{style:{...thSt,textAlign:'right'}},'Retails Delivered'),
+    ce('th',{style:{...thSt,textAlign:'right'}},'Enquiries'),
     ce('th',{style:thSt},'Lead Achievement'),
     ce('th',{style:thSt},'Retail Achievement'),
   ));
@@ -4113,6 +4137,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     ce('th',{style:flatThSt},'Retail Target'),
     ce('th',{style:flatThSt},'Leads Delivered'),
     ce('th',{style:flatThSt},'Retails Delivered'),
+    ce('th',{style:flatThSt},'Enquiries'),
     ce('th',{style:flatThSt},'Lead Achievement'),
     ce('th',{style:flatThSt},'Retail Achievement'),
   ));
@@ -4120,8 +4145,8 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   // Flat lower table totals
   const flatTotals = flatRows.reduce((acc,r) => ({
     lt:acc.lt+r.leadTarget, rt:acc.rt+r.retailTarget,
-    ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered
-  }), {lt:0,rt:0,ld:0,rd:0});
+    ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered, enq:acc.enq+r.enq,
+  }), {lt:0,rt:0,ld:0,rd:0,enq:0});
   const ftLa = flatTotals.lt > 0 ? flatTotals.ld/flatTotals.lt*100 : null;
   const ftRa = flatTotals.rt > 0 ? flatTotals.rd/flatTotals.rt*100 : null;
 
@@ -4172,6 +4197,12 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
             ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.rd)),
             ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:700,fontSize:13,color:sumRa!==null?pctColor(sumRa):'#94A3B8'}},fmtAch(sumRa)),
           ),
+          ce('tr',{style:{background:'#EFF6FF'}},
+            ce('td',{style:{padding:'9px 14px',fontWeight:700,color:'#374151',fontSize:12}},'Enquiries'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12,color:'#94A3B8'}},'—'),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontWeight:600,fontSize:12}},Nf(summaryTotals.enq)),
+            ce('td',{style:{padding:'9px 14px',textAlign:'center',fontSize:12,color:'#94A3B8'}},'—'),
+          ),
         )
       )
     ),
@@ -4217,7 +4248,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           flatGridHead(),
           ce('tbody',null,
             flatRows.length === 0
-              ? ce('tr',{key:'nd'},ce('td',{colSpan:9,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},
+              ? ce('tr',{key:'nd'},ce('td',{colSpan:10,style:{padding:20,textAlign:'center',color:'#94A3B8',fontSize:11}},
                   flatSearch.trim()?'No matches for "'+flatSearch.trim()+'"':'No data'))
               : [
                   ce('tr',{key:'flat-subtotal',style:{background:'#1E3A8A',position:'sticky',top:0,zIndex:1}},
@@ -4226,6 +4257,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
                     ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,color:'#fff',fontWeight:700,background:'#1E3A8A'}},fmtTgt(flatTotals.rt)),
                     ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff',background:'#1E3A8A'}},Nf(flatTotals.ld)),
                     ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff',background:'#1E3A8A'}},Nf(flatTotals.rd)),
+                    ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:'#fff',background:'#1E3A8A'}},Nf(flatTotals.enq)),
                     ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftLa!==null?pctColor(ftLa):'rgba(255,255,255,.6)',background:'#1E3A8A'}},fmtAch(ftLa)),
                     ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:ftRa!==null?pctColor(ftRa):'rgba(255,255,255,.6)',background:'#1E3A8A'}},fmtAch(ftRa)),
                   ),
@@ -4239,6 +4271,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,background:bg}},fmtTgt(r.retailTarget)),
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:r.leadsDelivered>0?600:400,background:bg}},Nf(r.leadsDelivered)),
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:r.retailsDelivered>0?600:400,background:bg}},Nf(r.retailsDelivered)),
+                      ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:r.enq>0?600:400,background:bg}},Nf(r.enq)),
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:r.leadAch!==null?pctColor(r.leadAch):'#94A3B8',background:bg}},fmtAch(r.leadAch)),
                       ce('td',{style:{padding:'7px 10px',textAlign:'center',fontSize:11,fontWeight:700,color:r.retailAch!==null?pctColor(r.retailAch):'#94A3B8',background:bg}},fmtAch(r.retailAch)),
                     );
