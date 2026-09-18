@@ -3887,19 +3887,20 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   }, []);
 
   const onFlatExport = useCallback(() => {
-    const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
-    const csvRows = flatRows.map(r =>
-      [r.zone, r.ao, r.model,
-        r.leadTarget>0?r.leadTarget.toFixed(4):0,
-        r.retailTarget>0?r.retailTarget.toFixed(4):0,
-        r.leadsDelivered, r.retailsDelivered,
-        r.leadTarget>0&&r.leadAch!==null?r.leadAch.toFixed(1):'',
-        r.retailTarget>0&&r.retailAch!==null?r.retailAch.toFixed(1):''].join(',')
-    );
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([hdr+csvRows.join('\n')],{type:'text/csv'}));
-    a.download = 'Hero_TvD_Flat_'+(isAllSelected?'AllMonths':[...tdMonths].join('_').replace(/'/g,''))+'.csv';
-    a.click();
+    const fTgt = n => n===0?'—':String(Math.round(n));
+    const fAch = p => p===null?'—':p.toFixed(1)+'%';
+    const tot = flatRows.reduce((acc,r)=>({
+      lt:acc.lt+r.leadTarget, rt:acc.rt+r.retailTarget,
+      ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered,
+    }),{lt:0,rt:0,ld:0,rd:0});
+    const tLa = tot.lt>0?tot.ld/tot.lt*100:null;
+    const tRa = tot.rt>0?tot.rd/tot.rt*100:null;
+    const aoa = [
+      ['Zone','AO','Model','Lead Target','Retail Target','Leads Delivered','Retails Delivered','Lead Achievement','Retail Achievement'],
+      ['Σ Subtotal ('+flatRows.length+' rows)','','',fTgt(tot.lt),fTgt(tot.rt),tot.ld,tot.rd,fAch(tLa),fAch(tRa)],
+      ...flatRows.map(r=>[r.zone,r.ao,r.model,fTgt(r.leadTarget),fTgt(r.retailTarget),r.leadsDelivered,r.retailsDelivered,fAch(r.leadAch),fAch(r.retailAch)]),
+    ];
+    exportCsv(aoa,'Hero_TvD_Flat_'+(isAllSelected?'AllMonths':[...tdMonths].join('_').replace(/'/g,''))+'.csv');
   }, [flatRows, tdMonths, isAllSelected]);
 
   const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
@@ -4132,10 +4133,7 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           ),
         ),
         ce('span',{style:{fontSize:10,color:'#6B7280',whiteSpace:'nowrap'}},flatRows.length+' rows'),
-        !viewerMode&&ce('button',{onClick:onFlatExport,style:{
-          padding:'7px 13px',borderRadius:6,background:'#9A3412',color:'#fff',
-          border:'none',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
-        }},'⬇ Export CSV'),
+        !viewerMode&&ce(CsvBtn,{onClick:onFlatExport}),
       ),
       ce('div',{style:{overflowX:'auto',borderRadius:8,boxShadow:'0 1px 6px rgba(0,0,0,.08)',maxHeight:520,overflowY:'auto'}},
         ce('table',{id:'td-flat-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
