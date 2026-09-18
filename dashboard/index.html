@@ -2327,7 +2327,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
 /* ════════════════════════════════════════════════════════════════════
    SOURCE ANALYSIS TAB
    ════════════════════════════════════════════════════════════════════ */
-const ENQUIRY_LT = new Set(['Direct Push', 'L1 Nurtured']);
+const ENQUIRY_CAT = new Set(['Direct Push', 'L1 Nurtured']);
 const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months, RT, onDetailedCsv, nsRetailRows, rawJoined }) {
   const { maps, sm, univ: univRaw, csm: csmRaw } = data;
   const univ = univRaw || [];
@@ -2452,7 +2452,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
       gNR++;
       nrBySrc.set(r.source, (nrBySrc.get(r.source)||0)+1);
     }
-    // Pass 4: Enquiries — rawJoined records where lt ∈ {Direct Push, L1 Nurtured}, attributed by lead_month
+    // Pass 4: Enquiries — rawJoined records where webId ∈ {Direct Push, L1 Nurtured}, attributed by lead_month
     const enqBySrc = new Map();
     let gEnq = 0;
     const rawJ = rawJoined || [];
@@ -2462,7 +2462,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
     const allMd4 = !filters.models    || filters.models.size    === 0;
     for (const r of rawJ) {
       if (r.lead_month !== M) continue;
-      if (!ENQUIRY_LT.has(r.lt)) continue;
+      if (!ENQUIRY_CAT.has(String(r.webId||'').trim())) continue;
       if (!allS4  && (filters.sources === FILTER_CLEARED || !filters.sources.has(r.source))) continue;
       if (!allSt4 && (filters.states  === FILTER_CLEARED || !filters.states.has(r.state)))  continue;
       if (!allCt4 && (filters.cities  === FILTER_CLEARED || !filters.cities.has(r.city)))   continue;
@@ -2636,7 +2636,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
       gNR2++;
       nrBySrc2.set(r.source, (nrBySrc2.get(r.source)||0)+1);
     }
-    // Pass 4 (cross-month): Enquiries — rawJoined where lt ∈ {Direct Push, L1 Nurtured}
+    // Pass 4 (cross-month): Enquiries — rawJoined where webId ∈ {Direct Push, L1 Nurtured}
     const rawJ2 = rawJoined || [];
     const enqBySrc2 = new Map();
     let gEnq2 = 0;
@@ -2646,7 +2646,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
     const allMd4b = !filters.models  || filters.models.size   === 0;
     for (const r of rawJ2) {
       if (!mSet.has(r.lead_month)) continue;
-      if (!ENQUIRY_LT.has(r.lt)) continue;
+      if (!ENQUIRY_CAT.has(String(r.webId||'').trim())) continue;
       if (!allS4b  && (filters.sources === FILTER_CLEARED || !filters.sources.has(r.source))) continue;
       if (!allSt4b && (filters.states  === FILTER_CLEARED || !filters.states.has(r.state)))  continue;
       if (!allCt4b && (filters.cities  === FILTER_CLEARED || !filters.cities.has(r.city)))   continue;
