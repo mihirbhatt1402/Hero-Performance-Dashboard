@@ -2327,7 +2327,8 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
 /* ════════════════════════════════════════════════════════════════════
    SOURCE ANALYSIS TAB
    ════════════════════════════════════════════════════════════════════ */
-const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months, RT, onDetailedCsv, nsRetailRows }) {
+const ENQUIRY_LT = new Set(['Direct Push', 'L1 Nurtured']);
+const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months, RT, onDetailedCsv, nsRetailRows, rawJoined }) {
   const { maps, sm, univ: univRaw, csm: csmRaw } = data;
   const univ = univRaw || [];
   const csm  = csmRaw  || [];
@@ -2451,6 +2452,24 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
       gNR++;
       nrBySrc.set(r.source, (nrBySrc.get(r.source)||0)+1);
     }
+    // Pass 4: Enquiries — rawJoined records where lt ∈ {Direct Push, L1 Nurtured}, attributed by lead_month
+    const enqBySrc = new Map();
+    let gEnq = 0;
+    const rawJ = rawJoined || [];
+    const allS4  = !filters.sources   || filters.sources.size   === 0;
+    const allSt4 = !filters.states    || filters.states.size    === 0;
+    const allCt4 = !filters.cities    || filters.cities.size    === 0;
+    const allMd4 = !filters.models    || filters.models.size    === 0;
+    for (const r of rawJ) {
+      if (r.lead_month !== M) continue;
+      if (!ENQUIRY_LT.has(r.lt)) continue;
+      if (!allS4  && (filters.sources === FILTER_CLEARED || !filters.sources.has(r.source))) continue;
+      if (!allSt4 && (filters.states  === FILTER_CLEARED || !filters.states.has(r.state)))  continue;
+      if (!allCt4 && (filters.cities  === FILTER_CLEARED || !filters.cities.has(r.city)))   continue;
+      if (!allMd4 && (filters.models  === FILTER_CLEARED || !filters.models.has(r.model)))  continue;
+      gEnq++;
+      enqBySrc.set(r.source, (enqBySrc.get(r.source)||0)+1);
+    }
     if (gL === 0 && gR === 0 && gNR === 0) return null;
     const sorted = [...bySrc.entries()].sort((a,b) => b[1][0]-a[1][0]);
     const grand = fin(gL, gR);
@@ -2460,9 +2479,9 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         ce('div', { className:'section-title', style:{marginBottom:0} }, M),
         ce('div',{style:{display:'flex',gap:0}},
           ce(CsvBtn, { onClick:()=>{
-            const aoa=[['Source','Leads','Retail','L.Contrib%','L2R%','Non-Scope R']];
-            csvSorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1),nrBySrc.get(src)||0]);});
-            aoa.push(['Grand Total',gL,gR,100,gL>0?+(gR/gL*100).toFixed(1):0,gNR]);
+            const aoa=[['Source','Leads','Enquiries','Retail','L.Contrib%','L2R%','Non-Scope R']];
+            csvSorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,enqBySrc.get(src)||0,tot.r,gL>0?+(tot.l/gL*100).toFixed(1):0,+tot.l2r.toFixed(1),nrBySrc.get(src)||0]);});
+            aoa.push(['Grand Total',gL,gEnq,gR,100,gL>0?+(gR/gL*100).toFixed(1):0,gNR]);
             exportCsv(aoa,'Hero_Source_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv');
           }}),
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', M) })
@@ -2474,11 +2493,12 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
             ce('tr', null,
               ce('th',{className:'left',style:{minWidth:160}},'Source'),
               ce('th',null,'Leads'),
+              ce('th',null,'Enquiries'),
               ce('th',null,'L.Contrib%'),
               ce('th',null,'Retail'),
               ce('th',null,'R.Contrib%'),
               ce('th',null,'L2R%'),
-              ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
+              ce('th',{style:{color:'#fff'}},'Non-Scope R'),
             )
           ),
           ce('tbody', null,
@@ -2487,6 +2507,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
               return ce('tr',{key:src},
                 ce('td',{className:'label'},src),
                 ce('td',null,Nf(tot.l)),
+                ce('td',null,Nf(enqBySrc.get(src)||0)),
                 ce('td',null,gL>0?Pf(tot.l/gL*100):'—'),
                 ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,gR>0?Pf(tot.r/gR*100):'—'),
@@ -2497,6 +2518,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
             ce('tr',{key:'gtotal',className:'total-row'},
               ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
               ce('td',null,Nf(grand.l)),
+              ce('td',null,Nf(gEnq)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(grand.r)),
               ce('td',null,'100.0%'),
@@ -2507,7 +2529,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         )
       )
     );
-  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, nsRetailRows]);
+  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, nsRetailRows, rawJoined]);
 
   const crossMonthTotals = useMemo(() => {
     const allS = !filters.sources || filters.sources.size === 0;
@@ -2614,9 +2636,27 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
       gNR2++;
       nrBySrc2.set(r.source, (nrBySrc2.get(r.source)||0)+1);
     }
+    // Pass 4 (cross-month): Enquiries — rawJoined where lt ∈ {Direct Push, L1 Nurtured}
+    const rawJ2 = rawJoined || [];
+    const enqBySrc2 = new Map();
+    let gEnq2 = 0;
+    const allS4b  = !filters.sources || filters.sources.size  === 0;
+    const allSt4b = !filters.states  || filters.states.size   === 0;
+    const allCt4b = !filters.cities  || filters.cities.size   === 0;
+    const allMd4b = !filters.models  || filters.models.size   === 0;
+    for (const r of rawJ2) {
+      if (!mSet.has(r.lead_month)) continue;
+      if (!ENQUIRY_LT.has(r.lt)) continue;
+      if (!allS4b  && (filters.sources === FILTER_CLEARED || !filters.sources.has(r.source))) continue;
+      if (!allSt4b && (filters.states  === FILTER_CLEARED || !filters.states.has(r.state)))  continue;
+      if (!allCt4b && (filters.cities  === FILTER_CLEARED || !filters.cities.has(r.city)))   continue;
+      if (!allMd4b && (filters.models  === FILTER_CLEARED || !filters.models.has(r.model)))  continue;
+      gEnq2++;
+      enqBySrc2.set(r.source, (enqBySrc2.get(r.source)||0)+1);
+    }
     const sorted = [...bySrc.entries()].sort((a,b)=>b[1][0]-a[1][0]);
-    return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted, nrBySrc:nrBySrc2, gNR:gNR2 };
-  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, months, nsRetailRows]);
+    return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted, nrBySrc:nrBySrc2, gNR:gNR2, enqBySrc:enqBySrc2, gEnq:gEnq2 };
+  }, [sm, csm, univ, pmsm, pm_csm, smLead, univLead, csmLead, maps, filters, getLR, hasCityF, months, nsRetailRows, rawJoined]);
 
   return ce('div', {className:'fade-up'},
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
@@ -2624,9 +2664,9 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         ce('div', { className:'section-title', style:{marginBottom:0} }, '∑ All Months — Source Summary'),
         ce('div',{style:{display:'flex',gap:0}},
           ce(CsvBtn, { onClick:()=>{
-            const aoa=[['Source','Leads','Retail','L.Contrib%','L2R%','Non-Scope R']];
-            crossMonthTotals.sorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1),crossMonthTotals.nrBySrc.get(src)||0]);});
-            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1),crossMonthTotals.gNR]);
+            const aoa=[['Source','Leads','Enquiries','Retail','L.Contrib%','L2R%','Non-Scope R']];
+            crossMonthTotals.sorted.forEach(([src,[l,r]])=>{const tot=fin(l,r);aoa.push([src,tot.l,crossMonthTotals.enqBySrc.get(src)||0,tot.r,crossMonthTotals.l>0?+(tot.l/crossMonthTotals.l*100).toFixed(1):0,+tot.l2r.toFixed(1),crossMonthTotals.nrBySrc.get(src)||0]);});
+            aoa.push(['Grand Total',crossMonthTotals.l,crossMonthTotals.gEnq,crossMonthTotals.r,100,+crossMonthTotals.l2r.toFixed(1),crossMonthTotals.gNR]);
             exportCsv(aoa,'Hero_Source_AllMonths.csv');
           }}),
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', null) })
@@ -2636,10 +2676,10 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
         ce('table', null,
           ce('thead', null, ce('tr', null,
             ce('th',{className:'left',style:{minWidth:160}},'Source'),
-            ce('th',null,'Leads'), ce('th',null,'L.Contrib%'),
+            ce('th',null,'Leads'), ce('th',null,'Enquiries'), ce('th',null,'L.Contrib%'),
             ce('th',null,'Retail'), ce('th',null,'R.Contrib%'),
             ce('th',null,'L2R%'),
-            ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
+            ce('th',{style:{color:'#fff'}},'Non-Scope R'),
           )),
           ce('tbody', null,
             ...crossMonthTotals.sorted.map(([src,[l,r]]) => {
@@ -2647,6 +2687,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
               return ce('tr',{key:src},
                 ce('td',{className:'label'},src),
                 ce('td',null,Nf(tot.l)),
+                ce('td',null,Nf(crossMonthTotals.enqBySrc.get(src)||0)),
                 ce('td',null,crossMonthTotals.l>0?Pf(tot.l/crossMonthTotals.l*100):'—'),
                 ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(tot.r)),
                 ce('td',null,crossMonthTotals.r>0?Pf(tot.r/crossMonthTotals.r*100):'—'),
@@ -2657,6 +2698,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
             ce('tr',{key:'gtotal',className:'total-row'},
               ce('td',{className:'label',style:{color:'#1A237E'}},'∑ Grand Total'),
               ce('td',null,Nf(crossMonthTotals.l)),
+              ce('td',null,Nf(crossMonthTotals.gEnq)),
               ce('td',null,'100.0%'),
               ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(crossMonthTotals.r)),
               ce('td',null,'100.0%'),
@@ -6186,7 +6228,7 @@ function App({fbUser,role,presence,onSignOut,onAdminOpen}){
     const props={data:effectiveData,filters,months,RT,viewerMode:noSource,clientMode,onDetailedCsv:clientDetailedCsv};
     switch(tab){
       case 'overview':    return ce(OverviewTab,      props);
-      case 'source':      return ce(SourceTab,        {...props,rawData:data,nsRetailRows});
+      case 'source':      return ce(SourceTab,        {...props,rawData:data,nsRetailRows,rawJoined});
       case 'webid':       return ce(WebIdTab,         {...props,rawJoined,leadsMode,nsRetailRows});
       case 'ltxsrc':      return ce(LTSourceTab,      props);
       case 'modelxsrc':   return ce(ModelSourceTab,   props);
