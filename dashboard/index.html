@@ -3887,21 +3887,50 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
   }, []);
 
   const onFlatExport = useCallback(() => {
+    const hdr = 'Zone,AO,Model,Lead Target,Retail Target,Leads Delivered,Retails Delivered,Lead Ach%,Retail Ach%\n';
+    const csvRows = flatRows.map(r =>
+      [r.zone, r.ao, r.model,
+        r.leadTarget>0?r.leadTarget.toFixed(4):0,
+        r.retailTarget>0?r.retailTarget.toFixed(4):0,
+        r.leadsDelivered, r.retailsDelivered,
+        r.leadTarget>0&&r.leadAch!==null?r.leadAch.toFixed(1):'',
+        r.retailTarget>0&&r.retailAch!==null?r.retailAch.toFixed(1):''].join(',')
+    );
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([hdr+csvRows.join('\n')],{type:'text/csv'}));
+    a.download = 'Hero_TvD_Flat_'+(isAllSelected?'AllMonths':[...tdMonths].join('_').replace(/'/g,''))+'.csv';
+    a.click();
+  }, [flatRows, tdMonths, isAllSelected]);
+
+  const onGridExport = useCallback(() => {
     const fTgt = n => n===0?'—':String(Math.round(n));
     const fAch = p => p===null?'—':p.toFixed(1)+'%';
-    const tot = flatRows.reduce((acc,r)=>({
-      lt:acc.lt+r.leadTarget, rt:acc.rt+r.retailTarget,
-      ld:acc.ld+r.leadsDelivered, rd:acc.rd+r.retailsDelivered,
-    }),{lt:0,rt:0,ld:0,rd:0});
-    const tLa = tot.lt>0?tot.ld/tot.lt*100:null;
-    const tRa = tot.rt>0?tot.rd/tot.rt*100:null;
-    const aoa = [
-      ['Zone','AO','Model','Lead Target','Retail Target','Leads Delivered','Retails Delivered','Lead Achievement','Retail Achievement'],
-      ['Σ Subtotal ('+flatRows.length+' rows)','','',fTgt(tot.lt),fTgt(tot.rt),tot.ld,tot.rd,fAch(tLa),fAch(tRa)],
-      ...flatRows.map(r=>[r.zone,r.ao,r.model,fTgt(r.leadTarget),fTgt(r.retailTarget),r.leadsDelivered,r.retailsDelivered,fAch(r.leadAch),fAch(r.retailAch)]),
-    ];
-    exportCsv(aoa,'Hero_TvD_Flat_'+(isAllSelected?'AllMonths':[...tdMonths].join('_').replace(/'/g,''))+'.csv');
-  }, [flatRows, tdMonths, isAllSelected]);
+    const calcAch = (ld,lt) => lt>0?ld/lt*100:null;
+    const aoa = [['Zone','AO','Model','Lead Target','Retail Target','Leads Delivered','Retails Delivered','Lead Achievement','Retail Achievement']];
+    for (const [zone, aoMap] of groupedRows) {
+      const zIsOpen = expandedZones.has(zone);
+      const zSum = zoneSummaries.get(zone)||{lt:0,rt:0,ld:0,rd:0};
+      if (!zIsOpen) {
+        aoa.push([zone,'—','—',fTgt(zSum.lt),fTgt(zSum.rt),zSum.ld,zSum.rd,fAch(calcAch(zSum.ld,zSum.lt)),fAch(calcAch(zSum.rd,zSum.rt))]);
+      } else {
+        for (const [ao, modelRows] of aoMap) {
+          const aoKey = zone+'\x00'+ao;
+          const aIsOpen = expandedAos.has(aoKey);
+          const aSum = aoSummaries.get(aoKey)||{lt:0,rt:0,ld:0,rd:0};
+          if (!aIsOpen) {
+            aoa.push([zone,ao,'—',fTgt(aSum.lt),fTgt(aSum.rt),aSum.ld,aSum.rd,fAch(calcAch(aSum.ld,aSum.lt)),fAch(calcAch(aSum.rd,aSum.rt))]);
+          } else {
+            const sorted = [...modelRows].sort((a,b)=>a.model.localeCompare(b.model));
+            for (const r of sorted) aoa.push([r.zone,r.ao,r.model,fTgt(r.leadTarget),fTgt(r.retailTarget),r.leadsDelivered,r.retailsDelivered,fAch(r.leadAch),fAch(r.retailAch)]);
+          }
+        }
+      }
+    }
+    const la = summaryTotals.lt>0?summaryTotals.ld/summaryTotals.lt*100:null;
+    const ra = summaryTotals.rt>0?summaryTotals.rd/summaryTotals.rt*100:null;
+    aoa.push(['Grand Total ('+allRows.length+' models)','','',fTgt(summaryTotals.lt),fTgt(summaryTotals.rt),summaryTotals.ld,summaryTotals.rd,fAch(la),fAch(ra)]);
+    exportCsv(aoa,'Hero_TvD_Grid_'+(isAllSelected?'AllMonths':[...tdMonths].join('_').replace(/'/g,''))+'.csv');
+  }, [groupedRows, expandedZones, expandedAos, zoneSummaries, aoSummaries, allRows, summaryTotals, tdMonths, isAllSelected]);
 
   const pctColor = p => p>=100?'#16A34A':p>=75?'#65A30D':p>=50?'#D97706':'#DC2626';
   const fmtTgt = n => n===0?'—':Nf(Math.round(n));
@@ -4107,7 +4136,10 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
 
     // UPPER TABLE: Accordion Zone → AO → Model
     ce('div',{className:'card',style:{padding:'16px 18px',marginBottom:20}},
-      ce('div',{style:{fontWeight:700,fontSize:11,color:'#1E3A8A',letterSpacing:'.04em',marginBottom:10,textTransform:'uppercase'}},'Target vs Delivery — Zone × AO × Model'),
+      ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}},
+        ce('div',{style:{fontWeight:700,fontSize:11,color:'#1E3A8A',letterSpacing:'.04em',textTransform:'uppercase'}},'Target vs Delivery — Zone × AO × Model'),
+        !viewerMode&&ce(CsvBtn,{onClick:onGridExport}),
+      ),
       ce('div',{style:{overflowX:'auto',borderRadius:8,boxShadow:'0 1px 6px rgba(0,0,0,.08)'}},
         ce('table',{id:'td-detail-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto'}},
           gridHead(),
@@ -4133,7 +4165,10 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           ),
         ),
         ce('span',{style:{fontSize:10,color:'#6B7280',whiteSpace:'nowrap'}},flatRows.length+' rows'),
-        !viewerMode&&ce(CsvBtn,{onClick:onFlatExport}),
+        !viewerMode&&ce('button',{onClick:onFlatExport,style:{
+          padding:'7px 13px',borderRadius:6,background:'#9A3412',color:'#fff',
+          border:'none',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
+        }},'⬇ Export CSV'),
       ),
       ce('div',{style:{overflowX:'auto',borderRadius:8,boxShadow:'0 1px 6px rgba(0,0,0,.08)',maxHeight:520,overflowY:'auto'}},
         ce('table',{id:'td-flat-table',style:{width:'100%',borderCollapse:'collapse',fontSize:11}},
