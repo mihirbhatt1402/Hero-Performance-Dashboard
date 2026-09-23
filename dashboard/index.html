@@ -2939,7 +2939,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
 /* ════════════════════════════════════════════════════════════════════
    GEO & DEALER TAB
    ════════════════════════════════════════════════════════════════════ */
-const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, months, RT, rawJoined, leadsMode, viewerMode }) {
+const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, months, RT, rawJoined, leadsMode, viewerMode, clientMode }) {
   const [sortCol, setSortCol] = React.useState('leads');
   const [sortDir, setSortDir] = React.useState('desc');
   const [search, setSearch] = React.useState('');
@@ -3086,7 +3086,7 @@ const GeoAndDealerTab = React.memo(function GeoAndDealerTab({ data, filters, mon
           onClick:()=>setSearch(''),
           style:{ padding:'7px 11px', border:'1px solid #e2e8f0', borderRadius:6, background:'#f1f5f9', cursor:'pointer', fontSize:12, color:'#64748b', whiteSpace:'nowrap' }
         }, '✕ Clear'),
-        !viewerMode && ce('button', {
+        !clientMode && ce('button', {
           onClick:exportCsv,
           style:{ padding:'7px 13px', background:'#9A3412', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontSize:12, fontWeight:600, whiteSpace:'nowrap' }
         }, 'Export CSV')
