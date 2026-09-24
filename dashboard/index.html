@@ -2715,44 +2715,27 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
    WEB ID TAB  (Direct Push / L1 Nurtured dimension)
    ════════════════════════════════════════════════════════════════════ */
 const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDetailedCsv, rawJoined, leadsMode, viewerMode, nsRetailRows }) {
-  const { maps, wm: wmRaw, wuniv: wunivRaw, cwm: cwmRaw } = data;
-  const wuniv = wunivRaw || [];
-  const cwm   = cwmRaw   || [];
-  const wm    = wmRaw    || [];
-  const getLR = useMemo(() => makeLR(data.rt_cols, RT), [data.rt_cols, RT]);
-  const hasCityF = !!(filters.cities && filters.cities.size > 0 && maps.city);
 
   const renderMonth = useCallback((M) => {
-    const univF = makeUnivFilter(filters);
+    const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf, purMdls:pmf } = filters;
+    const allS = !sf||sf.size===0, allLT = !ltf||ltf.size===0, allMdl = !mdf||mdf.size===0;
+    const allSt = !stf||stf.size===0, allCity = !cf||cf.size===0, allPurMdl = !pmf||pmf.size===0;
     const byWid = new Map();
     let gL=0, gR=0;
-    if (univF) {
-      for (const row of wuniv) {
-        if (maps.lm[row[4]] !== M) continue;
-        if (!univF(row, maps)) continue;
-        const wid = maps.webId[row[1]];
-        const [l,r] = getLR(row);
-        gL+=l; gR+=r;
-        const c = byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
-      }
-    } else if (hasCityF && cwm.length > 0) {
-      for (const row of cwm) {
-        if (maps.lm[row[2]] !== M) continue;
-        const city = maps.city[row[0]];
-        if (!filters.cities.has(city)) continue;
-        const wid = maps.webId[row[1]];
-        const [l,r] = getLR(row);
-        gL+=l; gR+=r;
-        const c = byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
-      }
-    } else {
-      for (const row of wm) {
-        if (maps.lm[row[1]] !== M) continue;
-        const wid = maps.webId[row[0]];
-        const [l,r] = getLR(row);
-        gL+=l; gR+=r;
-        const c = byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
-      }
+    for (const row of (rawJoined||[])) {
+      const effMonth = (leadsMode==='update'&&row.isBooked&&row.booking_month)?row.booking_month:row.lead_month;
+      if (effMonth !== M) continue;
+      if (!allS    && (sf  ===FILTER_CLEARED||!sf.has(row.source)))  continue;
+      if (!allLT   && (ltf ===FILTER_CLEARED||!ltf.has(row.lt)))     continue;
+      if (!allMdl  && (mdf ===FILTER_CLEARED||!mdf.has(row.model)))  continue;
+      if (!allSt   && (stf ===FILTER_CLEARED||!stf.has(row.state)))  continue;
+      if (!allCity && (cf  ===FILTER_CLEARED||!cf.has(row.city)))    continue;
+      const wid = row.webId||'Unknown';
+      const isR = isRetailedLead(row);
+      const purOk = allPurMdl||!isR||pmf.has(canonPurMdl(row.purchasedModel||''));
+      const rVal = (isR&&purOk&&(RT==='dms'?row.callType==='dms':RT==='co'?row.callType==='co':true))?1:0;
+      gL++; gR+=rVal;
+      const c=byWid.get(wid)||[0,0]; c[0]++; c[1]+=rVal; byWid.set(wid,c);
     }
     // NR pass: group by leadCat, filter by invoiceMonth
     const nsWRows = nsRetailRows || [];
@@ -2828,37 +2811,29 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
         )
       )
     );
-  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF, nsRetailRows]);
+  }, [rawJoined, filters, leadsMode, RT, nsRetailRows]);
 
   const crossMonthTotals = useMemo(() => {
-    const univF = makeUnivFilter(filters);
-    let gL=0, gR=0;
     const mSet = new Set(months);
+    const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf, purMdls:pmf } = filters;
+    const allS = !sf||sf.size===0, allLT = !ltf||ltf.size===0, allMdl = !mdf||mdf.size===0;
+    const allSt = !stf||stf.size===0, allCity = !cf||cf.size===0, allPurMdl = !pmf||pmf.size===0;
+    let gL=0, gR=0;
     const byWid = new Map();
-    if (univF) {
-      for (const row of wuniv) {
-        if (!mSet.has(maps.lm[row[4]])) continue;
-        if (!univF(row, maps)) continue;
-        const wid = maps.webId[row[1]];
-        const [l,r] = getLR(row); gL+=l; gR+=r;
-        const c=byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
-      }
-    } else if (hasCityF && cwm.length > 0) {
-      for (const row of cwm) {
-        if (!mSet.has(maps.lm[row[2]])) continue;
-        const city = maps.city[row[0]];
-        if (!filters.cities.has(city)) continue;
-        const wid = maps.webId[row[1]];
-        const [l,r] = getLR(row); gL+=l; gR+=r;
-        const c=byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
-      }
-    } else {
-      for (const row of wm) {
-        if (!mSet.has(maps.lm[row[1]])) continue;
-        const wid = maps.webId[row[0]];
-        const [l,r] = getLR(row); gL+=l; gR+=r;
-        const c=byWid.get(wid)||[0,0]; c[0]+=l; c[1]+=r; byWid.set(wid,c);
-      }
+    for (const row of (rawJoined||[])) {
+      const effMonth = (leadsMode==='update'&&row.isBooked&&row.booking_month)?row.booking_month:row.lead_month;
+      if (!mSet.has(effMonth)) continue;
+      if (!allS    && (sf  ===FILTER_CLEARED||!sf.has(row.source)))  continue;
+      if (!allLT   && (ltf ===FILTER_CLEARED||!ltf.has(row.lt)))     continue;
+      if (!allMdl  && (mdf ===FILTER_CLEARED||!mdf.has(row.model)))  continue;
+      if (!allSt   && (stf ===FILTER_CLEARED||!stf.has(row.state)))  continue;
+      if (!allCity && (cf  ===FILTER_CLEARED||!cf.has(row.city)))    continue;
+      const wid = row.webId||'Unknown';
+      const isR = isRetailedLead(row);
+      const purOk = allPurMdl||!isR||pmf.has(canonPurMdl(row.purchasedModel||''));
+      const rVal = (isR&&purOk&&(RT==='dms'?row.callType==='dms':RT==='co'?row.callType==='co':true))?1:0;
+      gL++; gR+=rVal;
+      const c=byWid.get(wid)||[0,0]; c[0]++; c[1]+=rVal; byWid.set(wid,c);
     }
     // NR cross-month pass
     const nsWRows2 = nsRetailRows || [];
@@ -2881,7 +2856,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
     }
     const sorted = [...byWid.entries()].sort((a,b)=>b[1][0]-a[1][0]);
     return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted, nrByWid:nrByWid2, gNRW:gNRW2 };
-  }, [wm, cwm, wuniv, maps, filters, getLR, hasCityF, months, nsRetailRows]);
+  }, [rawJoined, filters, leadsMode, RT, months, nsRetailRows]);
 
   return ce('div', {className:'fade-up'},
     crossMonthTotals.l > 0 && ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14,borderTop:'3px solid #003087'} },
