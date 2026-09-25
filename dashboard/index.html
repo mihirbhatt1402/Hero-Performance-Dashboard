@@ -3367,30 +3367,38 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     }
     const grandSrcMap = mkSrcMap(grandSrc);
 
-    function grpCells(srcMap, grp, denomL, denomR) {
+    // Flatten expanded groups → visible column list (sub-groups become top-level peers)
+    const visibleCols = [];
+    for (const grp of srcGroups) {
+      if (expandedGrps && expandedGrps.has(grp.id)) {
+        const sgs = grp.subGroups.filter(sg => sg.srcs.length > 0);
+        if (sgs.length > 0) {
+          sgs.forEach((sg, i) => visibleCols.push({
+            ...sg,
+            borderLeft: i === 0 ? '2px solid ' + grp.color : null,
+            parentId: grp.id,
+            isChild: true
+          }));
+        } else {
+          visibleCols.push({ ...grp, isChild: false });
+        }
+      } else {
+        visibleCols.push({ ...grp, isChild: false });
+      }
+    }
+
+    function colCells(srcMap, col, denomL, denomR) {
       const denom    = denomL != null ? denomL : gL;
       const denomRet = denomR != null ? denomR : grandRL;
-      const exp = expandedGrps.has(grp.id);
-      if (!exp) {
-        const a = grpSum(srcMap, grp.srcs);
-        return [
-          ce('td',{key:grp.id+'l',style:{borderLeft:'2px solid '+grp.color+'44'}},Nf(a.l)),
-          ce('td',{key:grp.id+'lc'},denom>0?Pf(a.l/denom*100):'—'),
-          ce('td',{key:grp.id+'r',style:{color:grp.color,fontWeight:700}},Nf(a.r)),
-          ce('td',{key:grp.id+'rc'},denomRet>0?Pf(a.r/denomRet*100):'—'),
-          ce('td',{key:grp.id+'l2r',style:{color:'#D97706',fontWeight:600}},Pf(a.l2r)),
-        ];
-      }
-      return grp.subGroups.filter(sg=>sg.srcs.length>0).flatMap((sg,si) => {
-        const a = grpSum(srcMap,sg.srcs);
-        return [
-          ce('td',{key:sg.id+'l',style:si===0?{borderLeft:'2px solid '+grp.color+'44'}:{}},Nf(a.l)),
-          ce('td',{key:sg.id+'lc'},denom>0?Pf(a.l/denom*100):'—'),
-          ce('td',{key:sg.id+'r',style:{color:sg.color,fontWeight:700}},Nf(a.r)),
-          ce('td',{key:sg.id+'rc'},denomRet>0?Pf(a.r/denomRet*100):'—'),
-          ce('td',{key:sg.id+'l2r',style:{color:'#D97706',fontWeight:600}},Pf(a.l2r)),
-        ];
-      });
+      const a = grpSum(srcMap, col.srcs);
+      const bl = col.borderLeft ? { borderLeft: col.borderLeft } : {};
+      return [
+        ce('td',{key:col.id+'l',style:bl},Nf(a.l)),
+        ce('td',{key:col.id+'lc'},denom>0?Pf(a.l/denom*100):'—'),
+        ce('td',{key:col.id+'r',style:{color:col.color,fontWeight:700}},Nf(a.r)),
+        ce('td',{key:col.id+'rc'},denomRet>0?Pf(a.r/denomRet*100):'—'),
+        ce('td',{key:col.id+'l2r',style:{color:'#D97706',fontWeight:600}},Pf(a.l2r)),
+      ];
     }
 
     // ── Headers ──
@@ -3398,13 +3406,18 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
     const hdr1 = [
       ce('th',{key:'dim',className:'left',rowSpan:2,style:{minWidth:220,zIndex:3,background:'#1D4ED8',color:'#fff'}},'Region / State'),
       ce('th',{key:'tot',colSpan:6,style:{background:'#1D4ED8',color:'#fff'}},'TOTAL'),
-      ...(viewerMode ? [] : srcGroups.map(grp => {
-        const exp = expandedGrps.has(grp.id);
-        const sgs = grp.subGroups.filter(sg=>sg.srcs.length>0);
-        return ce('th',{key:grp.id,colSpan:exp?sgs.length*5:5,
-          className:'grp-toggle',style:{background:grp.color,color:'#fff',borderTop:'2px solid rgba(0,0,0,.12)'},
-          onClick:()=>onToggleGrp(grp.id)
-        },(exp?'▴ ':'▾ ')+grp.label);
+      ...(viewerMode ? [] : visibleCols.map(col => {
+        const hasChildren = !col.isChild && col.subGroups && col.subGroups.filter(sg=>sg.srcs.length>0).length > 1;
+        const canToggle = onToggleGrp && (hasChildren || col.isChild);
+        const toggleId = col.isChild ? col.parentId : col.id;
+        const arrow = hasChildren ? '▾ ' : col.isChild ? '▴ ' : '';
+        return ce('th',{
+          key:col.id, colSpan:5,
+          className:canToggle?'grp-toggle':'',
+          style:{background:col.color,color:'#fff',borderTop:'2px solid '+col.color+'88',
+            ...(col.borderLeft?{borderLeft:col.borderLeft}:{})},
+          onClick:canToggle?()=>onToggleGrp(toggleId):undefined
+        },arrow+col.label);
       }))
     ];
     const hdr2 = [
@@ -3412,23 +3425,13 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       ce('th',{key:'tr',className:'sub'},'Retail'),ce('th',{key:'trc',className:'sub'},'R.Contrib%'),
       ce('th',{key:'tl2r',className:'sub'},'L2R%'),
       ce('th',{key:'tnr',className:'sub',style:{color:'#7C3AED'}},'Non-Scope R'),
-      ...(viewerMode ? [] : srcGroups.flatMap(grp => {
-        const exp = expandedGrps.has(grp.id);
-        if (!exp) return [
-          ce('th',{key:grp.id+'l',className:'sub',style:{borderLeft:'2px solid '+grp.color+'44'}},'Leads'),
-          ce('th',{key:grp.id+'lc',className:'sub'},'L.Contrib%'),
-          ce('th',{key:grp.id+'r',className:'sub'},'Retail'),
-          ce('th',{key:grp.id+'rc',className:'sub'},'R.Contrib%'),
-          ce('th',{key:grp.id+'l2r',className:'sub'},'L2R%'),
-        ];
-        return grp.subGroups.filter(sg=>sg.srcs.length>0).flatMap((sg,si) => [
-          ce('th',{key:sg.id+'l',className:'sub',style:si===0?{borderLeft:'2px solid '+grp.color+'44'}:{},title:sg.label},sg.label+' L'),
-          ce('th',{key:sg.id+'lc',className:'sub',title:sg.label},'L.Contrib%'),
-          ce('th',{key:sg.id+'r',className:'sub',title:sg.label},sg.label+' R'),
-          ce('th',{key:sg.id+'rc',className:'sub',title:sg.label},'R.Contrib%'),
-          ce('th',{key:sg.id+'l2r',className:'sub',title:sg.label},'L2R%'),
-        ]);
-      }))
+      ...(viewerMode ? [] : visibleCols.flatMap(col => [
+        ce('th',{key:col.id+'l',className:'sub',style:col.borderLeft?{borderLeft:col.borderLeft}:{}},'Leads'),
+        ce('th',{key:col.id+'lc',className:'sub'},'L.Contrib%'),
+        ce('th',{key:col.id+'r',className:'sub'},'Retail'),
+        ce('th',{key:col.id+'rc',className:'sub'},'R.Contrib%'),
+        ce('th',{key:col.id+'l2r',className:'sub'},'L2R%'),
+      ]))
     ];
 
     const bodyRows = [];
@@ -3452,7 +3455,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
         ce('td',{style:{color:'#1565C0',fontWeight:700}},Nf(reg.r)),ce('td',null,grandRL>0?Pf(reg.r/grandRL*100):'—'),
         ce('td',{style:{color:'#D97706',fontWeight:700}},regL2R>0?Pf(regL2R):'—'),
         ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(reg.nr||0)),
-        ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(regSrcMap,grp)))
+        ...(viewerMode ? [] : visibleCols.flatMap(col=>colCells(regSrcMap,col)))
       ));
       if (!isRegOpen) continue;
 
@@ -3470,7 +3473,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
           ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(stEntry.r)),ce('td',null,grandRL>0?Pf(stEntry.r/grandRL*100):'—'),
           ce('td',{style:{color:'#D97706',fontWeight:600}},stL2R>0?Pf(stL2R):'—'),
           ce('td',{style:{color:'#7C3AED',fontWeight:600}},Nf(stEntry.nr||0)),
-          ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(stSrcMap,grp,reg.l,reg.r)))
+          ...(viewerMode ? [] : visibleCols.flatMap(col=>colCells(stSrcMap,col,reg.l,reg.r)))
         ));
       }
     }
@@ -3482,7 +3485,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       ce('td',{style:{color:'#EA580C',fontWeight:700}},Nf(gR)),ce('td',null,'100.0%'),
       ce('td',{style:{color:'#D97706',fontWeight:700}},grand.l2r>0?Pf(grand.l2r):'—'),
       ce('td',{style:{color:'#7C3AED',fontWeight:700}},Nf(gNRS||0)),
-      ...(viewerMode ? [] : srcGroups.flatMap(grp=>grpCells(grandSrcMap,grp)))
+      ...(viewerMode ? [] : visibleCols.flatMap(col=>colCells(grandSrcMap,col)))
     ));
 
     return { grand, hdr1, hdr2, bodyRows, regionMap, gNRS:gNRS||0 };
