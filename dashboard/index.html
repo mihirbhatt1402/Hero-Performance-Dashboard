@@ -462,6 +462,28 @@ function buildSrcGroups(srcList) {
 const ce = React.createElement;
 const { useState, useEffect, useMemo, useRef, useCallback, useTransition } = React;
 
+/* Synchronized horizontal scroll for a group of same-width tables in one tab.
+   Returns { addScrollRef, onTableScroll }. Pass addScrollRef as the `ref` prop
+   and onTableScroll as the `onScroll` prop to every scroll-x container in the
+   group. An isSyncing guard prevents re-entrant loops. Stale refs are pruned
+   via el.isConnected so month-card unmounts don't leave phantom entries. */
+function useSyncedScroll() {
+  const refs = useRef([]);
+  const syncing = useRef(false);
+  const addScrollRef = useCallback(el => {
+    if (el && !refs.current.includes(el)) refs.current.push(el);
+  }, []);
+  const onTableScroll = useCallback(e => {
+    if (syncing.current) return;
+    syncing.current = true;
+    const sl = e.currentTarget.scrollLeft;
+    refs.current = refs.current.filter(r => r.isConnected);
+    for (const r of refs.current) { if (r !== e.currentTarget) r.scrollLeft = sl; }
+    syncing.current = false;
+  }, []);
+  return { addScrollRef, onTableScroll };
+}
+
 /* ════════════════════════════════════════════════════════════════════
    HERO DATA PARSING — Leads + Retail (Google Sheets) + buildPayload
    ════════════════════════════════════════════════════════════════════ */
@@ -1620,7 +1642,8 @@ const MultiSelect = React.memo(function MultiSelect({ label, options, selected, 
    ════════════════════════════════════════════════════════════════════ */
 const DimGrid = React.memo(function DimGrid({
   agg, srcGroups, dimLabel, expandedGrps, onToggleGrp,
-  expandedRows, onToggleRow, subRowsFn, grandForContrib, noSort, viewerMode, noGroupHeaders
+  expandedRows, onToggleRow, subRowsFn, grandForContrib, noSort, viewerMode, noGroupHeaders,
+  scrollRef, onScroll
 }) {
   if (!agg) return null;
   const { grand, grandSrc, dimAggs } = agg;
@@ -1747,7 +1770,7 @@ const DimGrid = React.memo(function DimGrid({
   }
   rows.push(renderRow('∑ Grand Total', grand, grandSrc, true, false, null, false));
 
-  return ce('div', { className:'scroll-x' },
+  return ce('div', { className:'scroll-x', ref:scrollRef, onScroll:onScroll },
     ce('table', null,
       ce('thead', null,
         ...(noGroupHeaders ? [] : [ce('tr', null, ...hdr1)]),
@@ -1763,6 +1786,7 @@ const DimGrid = React.memo(function DimGrid({
    Renders one DimGrid per selected month.
    ════════════════════════════════════════════════════════════════════ */
 function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, noPrefix, viewerMode, noGroupHeaders, onDetailedCsv, noExport }) {
+  const { addScrollRef, onTableScroll } = useSyncedScroll();
   const aggs = useMemo(() => months.map(M => ({ M, agg: renderAgg(M) })), [months, renderAgg]);
   const summaryAgg = useMemo(() => {
     let gL=0, gR=0;
@@ -1802,7 +1826,7 @@ function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedG
           !noExport && onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), null) })
         )
       ),
-      ce(DimGrid, { agg:summaryAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
+      ce(DimGrid, { agg:summaryAgg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders, scrollRef:addScrollRef, onScroll:onTableScroll })
     ),
     aggs.map(({ M, agg }) => {
       if (!agg || (agg.grand.l === 0 && agg.grand.r === 0)) return null;
@@ -1814,7 +1838,7 @@ function MonthlyGrids({ title, months, renderAgg, srcGroups, dimLabel, expandedG
             !noExport && onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv((title||dimLabel).replace(/\s/g,'_'), M) })
           )
         ),
-        ce(DimGrid, { agg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders })
+        ce(DimGrid, { agg, srcGroups, dimLabel, expandedGrps, onToggleGrp, expandedRows, onToggleRow, subRowsFn, viewerMode, noGroupHeaders, scrollRef:addScrollRef, onScroll:onTableScroll })
       );
     })
   );
@@ -2327,6 +2351,7 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
    ════════════════════════════════════════════════════════════════════ */
 const ENQUIRY_CAT = new Set(['Direct Push', 'L1 Nurtured']);
 const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months, RT, onDetailedCsv, nsRetailRows, rawJoined }) {
+  const { addScrollRef, onTableScroll } = useSyncedScroll();
   const { maps, sm, univ: univRaw, csm: csmRaw } = data;
   const univ = univRaw || [];
   const csm  = csmRaw  || [];
@@ -2485,7 +2510,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', M) })
         )
       ),
-      ce('div', { className:'scroll-x' },
+      ce('div', { className:'scroll-x', ref:addScrollRef, onScroll:onTableScroll },
         ce('table', null,
           ce('thead', null,
             ce('tr', null,
@@ -2670,7 +2695,7 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Source', null) })
         )
       ),
-      ce('div', { className:'scroll-x' },
+      ce('div', { className:'scroll-x', ref:addScrollRef, onScroll:onTableScroll },
         ce('table', null,
           ce('thead', null, ce('tr', null,
             ce('th',{className:'left',style:{minWidth:160}},'Source'),
@@ -2729,6 +2754,8 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
     if(!allS) console.log('[WebIdTab DEBUG] SOURCE FILTER ACTIVE — selected:',sfArr,'matchCount:',sfMatchCount,'of',rj.length);
   }
 
+  const { addScrollRef, onTableScroll } = useSyncedScroll();
+
   const renderMonth = useCallback((M) => {
     const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf, purMdls:pmf } = filters;
     const allS = !sf||sf.size===0, allLT = !ltf||ltf.size===0, allMdl = !mdf||mdf.size===0;
@@ -2786,7 +2813,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
           rawJoined && ce(DetailedCsvBtn, { onClick:()=>exportLeadCategDetailedCsv(rawJoined,filters,RT,leadsMode,'Hero_LeadCateg_Detailed_'+M.replace(/[^a-z0-9]/gi,'_')+'.csv',M,viewerMode) })
         )
       ),
-      ce('div', { className:'scroll-x' },
+      ce('div', { className:'scroll-x', ref:addScrollRef, onScroll:onTableScroll },
         ce('table', null,
           ce('thead', null,
             ce('tr', null,
@@ -2888,7 +2915,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
           rawJoined && ce(DetailedCsvBtn, { onClick:()=>exportLeadCategDetailedCsv(rawJoined,filters,RT,leadsMode,'Hero_LeadCateg_Detailed_AllMonths.csv',null,viewerMode) })
         )
       ),
-      ce('div', { className:'scroll-x' },
+      ce('div', { className:'scroll-x', ref:addScrollRef, onScroll:onTableScroll },
         ce('table', null,
           ce('thead', null, ce('tr', null,
             ce('th',{className:'left',style:{minWidth:180}},'Web ID'),
@@ -3239,6 +3266,7 @@ const ModelSourceTab = React.memo(function ModelSourceTab({ data, filters, month
    STATE × SOURCE TAB  (Zone → State → City → Dealer drill-down)
    ════════════════════════════════════════════════════════════════════ */
 const StateSourceTab = React.memo(function StateSourceTab({ data, filters, months, RT, viewerMode, onDetailedCsv, rawJoined, leadsMode, nsRetailRows }) {
+  const { addScrollRef, onTableScroll } = useSyncedScroll();
   const { maps } = data;
 
   const allSrcs   = useMemo(() => [...new Set(maps.src)], [maps]);
@@ -3481,7 +3509,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('StateSource', detailedKey) })
         )
       ),
-      ce('div', { className:'scroll-x' },
+      ce('div', { className:'scroll-x', ref:addScrollRef, onScroll:onTableScroll },
         ce('table', null,
           ce('thead', null, ce('tr', null, ...grid.hdr1), ce('tr', null, ...grid.hdr2)),
           ce('tbody', null, ...grid.bodyRows)
@@ -4357,6 +4385,7 @@ const DISP_LM_CAT = {
 };
 
 const DispersionTab = React.memo(function DispersionTab({ data, filters, months, RT, onDetailedCsv }) {
+  const { addScrollRef, onTableScroll } = useSyncedScroll();
   const { maps, rdm, rdmx } = data;
   if (!rdm) return ce('div',{className:'fade-up'},ce('div',{className:'card',style:{padding:32,textAlign:'center',color:'#94A3B8'}},'Retail Dispersion data not yet available. Please sync data.'));
 
@@ -4472,7 +4501,7 @@ const DispersionTab = React.memo(function DispersionTab({ data, filters, months,
           onDetailedCsv && ce(DetailedCsvBtn, { onClick:()=>onDetailedCsv('Dispersion', dispMonth||null) })
         )
       ),
-      ce('div', { className:'scroll-x' },
+      ce('div', { className:'scroll-x', ref:addScrollRef, onScroll:onTableScroll },
         ce('table', null,
           ce('thead', null,
             ce('tr', null,
