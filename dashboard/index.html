@@ -2823,7 +2823,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
               ce('th',null,'Retail'),
               ce('th',null,'R.Contrib%'),
               ce('th',null,'L2R%'),
-              ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
+              ce('th',{style:{color:'#fff'}},'Non-Scope R'),
             )
           ),
           ce('tbody', null,
@@ -2922,7 +2922,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
             ce('th',null,'Leads'), ce('th',null,'L.Contrib%'),
             ce('th',null,'Retail'), ce('th',null,'R.Contrib%'),
             ce('th',null,'L2R%'),
-            ce('th',{style:{color:'#7C3AED'}},'Non-Scope R'),
+            ce('th',{style:{color:'#fff'}},'Non-Scope R'),
           )),
           ce('tbody', null,
             ...crossMonthTotals.sorted.map(([wid,[l,r]]) => {
@@ -3424,7 +3424,7 @@ const StateSourceTab = React.memo(function StateSourceTab({ data, filters, month
       ce('th',{key:'tl',className:'sub'},'Leads'),ce('th',{key:'tlc',className:'sub'},'L.Contrib%'),
       ce('th',{key:'tr',className:'sub'},'Retail'),ce('th',{key:'trc',className:'sub'},'R.Contrib%'),
       ce('th',{key:'tl2r',className:'sub'},'L2R%'),
-      ce('th',{key:'tnr',className:'sub',style:{color:'#7C3AED'}},'Non-Scope R'),
+      ce('th',{key:'tnr',className:'sub',style:{color:'#fff'}},'Non-Scope R'),
       ...(viewerMode ? [] : visibleCols.flatMap(col => [
         ce('th',{key:col.id+'l',className:'sub',style:col.borderLeft?{borderLeft:col.borderLeft}:{}},'Leads'),
         ce('th',{key:col.id+'lc',className:'sub'},'L.Contrib%'),
@@ -4770,7 +4770,7 @@ const CrossTabGrid = React.memo(function CrossTabGrid({ agg, rowLabel, colLabel,
               ce('th',{key:ck+'lc',className:'sub'},'L.Contrib%'),
               ce('th',{key:ck+'r',className:'sub'},'Retail'),
               ce('th',{key:ck+'rc',className:'sub'},'R.Contrib%'),
-              ce('th',{key:ck+'l2r',className:'sub',style:{color:'#D97706'}},'L2R%'),
+              ce('th',{key:ck+'l2r',className:'sub',style:{color:'#fff'}},'L2R%'),
             ])
           )
         ),
