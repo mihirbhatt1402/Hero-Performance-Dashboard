@@ -2715,6 +2715,19 @@ const SourceTab = React.memo(function SourceTab({ data, rawData, filters, months
    WEB ID TAB  (Direct Push / L1 Nurtured dimension)
    ════════════════════════════════════════════════════════════════════ */
 const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDetailedCsv, rawJoined, leadsMode, viewerMode, nsRetailRows }) {
+  {
+    const sf=filters.sources, allS=!sf||sf.size===0;
+    const sfArr=sf?[...sf]:[];
+    const rj=rawJoined||[];
+    const srcDistinct=[...new Set(rj.map(r=>r.source))].sort();
+    const sfMatchCount=allS?rj.length:rj.filter(r=>sf.has(r.source)).length;
+    console.log('[WebIdTab] render', {leadsMode,RT,rawJoinedLen:rj.length,months,
+      fSources:sfArr, allS, srcDistinct, sfMatchCount,
+      fMonths:[...(filters.months||[])], fModels:[...(filters.models||[])],
+      fStates:[...(filters.states||[])], fCities:[...(filters.cities||[])],
+      fLT:[...(filters.leadTypes||[])], fPurMdls:[...(filters.purMdls||[])]});
+    if(!allS) console.log('[WebIdTab DEBUG] SOURCE FILTER ACTIVE — selected:',sfArr,'matchCount:',sfMatchCount,'of',rj.length);
+  }
 
   const renderMonth = useCallback((M) => {
     const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf, purMdls:pmf } = filters;
@@ -2756,6 +2769,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
       gNRW++;
       nrByWid.set(r.leadCat, (nrByWid.get(r.leadCat)||0)+1);
     }
+    console.log('[WebIdTab renderMonth]', M, {gL, gR, byWidSize:byWid.size, allS, sfVal:(sf?[...sf]:[])});
     if (gL === 0 && gR === 0 && gNRW === 0) return null;
     const sorted = [...byWid.entries()].sort((a,b) => b[1][0]-a[1][0]);
     const grand = fin(gL, gR);
@@ -2817,6 +2831,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
     const mSet = new Set(months);
     const { sources:sf, leadTypes:ltf, models:mdf, states:stf, cities:cf, purMdls:pmf } = filters;
     const allS = !sf||sf.size===0, allLT = !ltf||ltf.size===0, allMdl = !mdf||mdf.size===0;
+    console.log('[WebIdTab crossMonthTotals] COMPUTE — allS:',allS,'sf:',(sf?[...sf]:[]),'rawJoinedLen:',(rawJoined||[]).length,'months:',months);
     const allSt = !stf||stf.size===0, allCity = !cf||cf.size===0, allPurMdl = !pmf||pmf.size===0;
     let gL=0, gR=0;
     const byWid = new Map();
@@ -2855,6 +2870,7 @@ const WebIdTab = React.memo(function WebIdTab({ data, filters, months, RT, onDet
       nrByWid2.set(r.leadCat, (nrByWid2.get(r.leadCat)||0)+1);
     }
     const sorted = [...byWid.entries()].sort((a,b)=>b[1][0]-a[1][0]);
+    console.log('[WebIdTab crossMonthTotals] RESULT — gL:',gL,'gR:',gR,'allS:',allS);
     return { l:gL, r:gR, l2r:gL>0?gR/gL*100:0, sorted, nrByWid:nrByWid2, gNRW:gNRW2 };
   }, [rawJoined, filters, leadsMode, RT, months, nsRetailRows]);
 
