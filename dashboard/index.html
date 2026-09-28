@@ -3599,11 +3599,16 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
     const allPurMdl = !pmf || pmf.size === 0;
 
     // --- Delivery accumulation (respects all global filters) ---
+    // Leads always use lead_month (matching Source Analysis On Create lead count).
+    // Retail uses booking_month in On Update mode (matching Source Analysis retail count).
+    // A row enters if either its lead month or its retail month falls in the selected period.
     const delMap = new Map();
     for (const r of rawJoined) {
-      const effMonth = (leadsMode==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month;
-      if (selM !== null) { if (!selM.has(effMonth)) continue; }
-      else               { if (!HERO_TARGET_MONTHS_SET.has(effMonth)) continue; }
+      const leadM    = r.lead_month;
+      const retailM  = (leadsMode==='update'&&r.isBooked&&r.booking_month)?r.booking_month:r.lead_month;
+      const leadIn   = selM!==null ? selM.has(leadM)   : HERO_TARGET_MONTHS_SET.has(leadM);
+      const retailIn = selM!==null ? selM.has(retailM) : HERO_TARGET_MONTHS_SET.has(retailM);
+      if (!leadIn && !retailIn) continue;
       if (!allS   &&(sf  ===FILTER_CLEARED||!sf.has(r.source))) continue;
       if (!allLT  &&(ltf ===FILTER_CLEARED||!ltf.has(r.lt)))   continue;
       if (!allMdl &&(mdf ===FILTER_CLEARED||!mdf.has(r.model)))continue;
@@ -3614,10 +3619,10 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       const key   = ao+'\x00'+model;
       let d = delMap.get(key);
       if (!d){d={l:0,r:0};delMap.set(key,d);}
-      d.l++;
+      if (leadIn) d.l++;
       const isR = isRetailedLead(r);
       const purOk = allPurMdl || !isR || pmf.has(canonPurMdl(r.purchasedModel||''));
-      if (purOk && (RT==='dms'?(isR&&r.callType==='dms'):RT==='co'?(isR&&r.callType==='co'):isR)) d.r++;
+      if (retailIn && purOk && (RT==='dms'?(isR&&r.callType==='dms'):RT==='co'?(isR&&r.callType==='co'):isR)) d.r++;
     }
 
     // Enquiries accumulation: always lead_month, webId ∈ ENQUIRY_CAT, no purMdl filter
