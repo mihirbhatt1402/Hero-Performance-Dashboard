@@ -3663,6 +3663,12 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
       }
     }
 
+    // Pre-build set of all AO+model keys present in HERO_TARGET_DATA (before any filtering)
+    const targetKeySet = new Set();
+    for (const [ao, aoData] of Object.entries(HERO_TARGET_DATA)) {
+      for (const model of Object.keys(aoData.models)) targetKeySet.add(ao+'\x00'+model);
+    }
+
     const rows = [];
     for (const [ao, aoData] of Object.entries(HERO_TARGET_DATA)) {
       // State filter: include this AO only if its leads include the filtered state(s)
@@ -3704,6 +3710,23 @@ const TargetDeliveryTab = React.memo(function TargetDeliveryTab({ data, filters,
           leadsDelivered:del.l, retailsDelivered:del.r, leadAch:la, retailAch:ra, enq, enqAch });
       }
     }
+
+    // Unattributed rows: leads whose normalized AO+model have no entry in HERO_TARGET_DATA.
+    // These are counted in delMap/enqMap but were never retrieved by the loop above.
+    // Without these rows, summaryTotals.leadsDelivered under-counts vs Source Analysis.
+    const unattrKeys = new Set();
+    for (const key of delMap.keys()) { if (!targetKeySet.has(key)) unattrKeys.add(key); }
+    for (const key of enqMap.keys()) { if (!targetKeySet.has(key)) unattrKeys.add(key); }
+    for (const key of unattrKeys) {
+      const sep  = key.indexOf('\x00');
+      const uAo  = key.slice(0, sep);
+      const uMdl = key.slice(sep + 1);
+      const d    = delMap.get(key) || {l:0, r:0};
+      const enq  = enqMap.get(key) || 0;
+      rows.push({ ao:uAo, zone:'Unattributed', model:uMdl, leadTarget:0, enqTarget:0, retailTarget:0,
+        leadsDelivered:d.l, retailsDelivered:d.r, leadAch:null, retailAch:null, enq, enqAch:null });
+    }
+
     return rows;
   }, [rawJoined, filters, leadsMode, RT, tdMonths, isAllSelected]);
 
