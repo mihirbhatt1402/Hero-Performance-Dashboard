@@ -2190,27 +2190,6 @@ const OverviewTab = React.memo(function OverviewTab({ data, filters, RT }) {
       ce('div', { className:'section-title' }, 'Month-wise Trend — Leads, Retails & L2R%'),
       ce('div', { style:{height:260,position:'relative'} }, ce('canvas', { ref:chartRef }))
     ),
-    totals.l > 0 && ce('div', { className:'card', style:{padding:'10px 18px',marginBottom:14,borderTop:'3px solid #6366F1'} },
-      ce('div', { style:{display:'flex',flexWrap:'wrap',alignItems:'stretch'} },
-        ...[
-          ...(data.rt_cols ? [
-            { label:'DMS Retails', value:Nf(totals.dL),  color:'#7C3AED' },
-            { label:'Call Out',    value:Nf(totals.coL), color:'#0891B2' },
-          ] : []),
-          { label:'Paid %',       value:totals.l>0?Pf(totals.pL/totals.l*100):'—', color:'#6366F1' },
-          { label:'Organic %',    value:totals.l>0?Pf(totals.oL/totals.l*100):'—', color:'#059669' },
-          { label:'Active Sources', value:String(srcBreak.filter(s=>s.l>0).length), color:'#475569' },
-          { label:'Models',        value:String(heatData.top10.length),              color:'#475569' },
-          { label:'States',        value:String(heatData.top15.length),              color:'#475569' },
-        ].map((s,i) => ce('div', { key:i, style:{
-          padding:'6px 16px', borderLeft:i>0?'1px solid #E2E8F0':'none',
-          display:'flex', flexDirection:'column', gap:2
-        }},
-          ce('div',{style:{fontSize:9,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'.06em',whiteSpace:'nowrap'}},s.label),
-          ce('div',{style:{fontSize:15,fontWeight:700,color:s.color,fontFamily:'DM Mono,monospace'}},s.value)
-        ))
-      )
-    ),
     ce('div', { className:'card', style:{padding:'16px 18px',marginBottom:14} },
       ce('div', { style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8} },
         ce('div', { className:'section-title', style:{marginBottom:0} }, 'Source Summary'),
